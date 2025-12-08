@@ -2,13 +2,20 @@ class Messages:
     START_TEXT = """
 👋 **Hello** {}!
 
-I'm an **Auto Caption Bot** that automatically adds custom captions to media files in your channels.
+I'm a **Series File Organizer Bot** that helps you collect, organize, and upload series files to your channel.
 
 **Features:**
-• Supports all media types (photos, videos, documents, audio)
-• Customizable caption text with markdown support
-• Flexible positioning (top, bottom, or replace)
-• Works in both public and private channels
+• Extract info from captions (series, season, episode, quality)
+• Collect multiple files temporarily
+• Sort by episode and quality
+• Upload with clean formatted captions
+
+**Commands:**
+• /setchannel - Set target upload channel
+• /collect - Start collecting files
+• /upload - Sort and upload collected files
+• /clear - Clear collection
+• /status - View collection status
 
 Maintained by @{}
 """
@@ -17,27 +24,38 @@ Maintained by @{}
 <b>📖 How to Use</b>
 
 <b>Setup Steps:</b>
-1. Add me as admin in your channel with edit message permissions
-2. Set your custom caption text in environment variables
-3. Upload or forward media files to your channel
-4. I'll automatically edit the captions!
+1. Use /setchannel to set your target channel
+2. Use /collect to start collection mode
+3. Send files with captions containing series info
+4. Use /upload to sort and send to channel
 
-<b>Caption Formatting:</b>
-Supports full markdown formatting including bold, italic, code, and links.
+<b>Caption Format:</b>
+Your captions should contain:
+• Series name
+• Season number (S01 or Season 1)
+• Episode number (E01 or Episode 1)
+• Quality (480p, 720p, 1080p)
 
-<b>Source Code:</b> https://github.com/avipatilpro/Caption-Bot
+Example: "Breaking Bad S01 E03 720p"
+
+<b>Commands:</b>
+• /setchannel <channel_id> - Set upload channel
+• /collect - Start collecting files
+• /upload - Upload sorted files
+• /clear - Clear collection
+• /status - Check status
 """
 
     ABOUT_TEXT = """
 <b>ℹ️ About This Bot</b>
 
-<b>Bot Name:</b> Auto Caption Bot
+<b>Bot Name:</b> Series File Organizer Bot
 <b>Language:</b> Python
 <b>Framework:</b> Pyrofork
-<b>Version:</b> 3.0.0
-<b>Features:</b> Auto caption, Markdown support, Multi-position
+<b>Version:</b> 4.0.0
+<b>Features:</b> Caption analysis, File collection, Smart sorting
 
-Built with ❤️ for the Telegram community
+Built with ❤️ for organized series uploads
 """
 
     MARKDOWN_TEXT = """
