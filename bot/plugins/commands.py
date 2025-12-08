@@ -11,7 +11,7 @@ async def start_command(client, message):
     await message.reply_text(
         Messages.START_TEXT.format(message.from_user.first_name, Config.ADMIN_USERNAME),
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🖋 Current Caption", callback_data="status")],
+            [InlineKeyboardButton("📊 Status", callback_data="cstatus")],
             [
                 InlineKeyboardButton("🤩 Help", callback_data="help"),
                 InlineKeyboardButton("🛡 About", callback_data="about")
@@ -27,7 +27,6 @@ async def help_command(client, message):
     await message.reply_text(
         Messages.HELP_TEXT,
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("About Markdown", callback_data="markdown")],
             [
                 InlineKeyboardButton("⏪ Back", callback_data="back"),
                 InlineKeyboardButton("🔐 Close", callback_data="close")
@@ -48,7 +47,7 @@ async def about_command(client, message):
             ],
             [InlineKeyboardButton("🤩 Help", callback_data="help")]
         ]),
-        parse_mode="markdown",
+        parse_mode="html",
         disable_web_page_preview=True
     )
 
@@ -56,9 +55,9 @@ async def about_command(client, message):
 async def callback_handler(client, callback_query: CallbackQuery):
     data = callback_query.data
     
-    if data == "status":
+    if data == "cstatus":
         await callback_query.message.edit_text(
-            Messages.STATUS_TEXT.format(Config.CAPTION_TEXT, Config.CAPTION_POSITION),
+            "📊 Use /status command to see collection status",
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton("⬇️ Back", callback_data="back"),
@@ -72,7 +71,6 @@ async def callback_handler(client, callback_query: CallbackQuery):
         await callback_query.message.edit_text(
             Messages.HELP_TEXT,
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("About Markdown", callback_data="markdown")],
                 [
                     InlineKeyboardButton("⬇️ Back", callback_data="back"),
                     InlineKeyboardButton("🔐 Close", callback_data="close")
@@ -91,18 +89,6 @@ async def callback_handler(client, callback_query: CallbackQuery):
                 ],
                 [InlineKeyboardButton("🤩 Help", callback_data="help")]
             ]),
-            parse_mode="markdown"
-        )
-    
-    elif data == "markdown":
-        await callback_query.message.edit_text(
-            Messages.MARKDOWN_TEXT,
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("⬇️ Back", callback_data="help"),
-                    InlineKeyboardButton("🔐 Close", callback_data="close")
-                ]
-            ]),
             parse_mode="html"
         )
     
@@ -110,7 +96,7 @@ async def callback_handler(client, callback_query: CallbackQuery):
         await callback_query.message.edit_text(
             Messages.START_TEXT.format(callback_query.from_user.first_name, Config.ADMIN_USERNAME),
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🖋 Current Caption", callback_data="status")],
+                [InlineKeyboardButton("📊 Status", callback_data="cstatus")],
                 [
                     InlineKeyboardButton("🤩 Help", callback_data="help"),
                     InlineKeyboardButton("🛡 About", callback_data="about")
