@@ -2,11 +2,10 @@ import re
 import logging
 from pyrogram import filters
 from pyrogram.types import Message
-from bot.client import CaptionBot
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
-app = CaptionBot()
+
 
 # Storage for collection state
 collection_state = {
@@ -61,7 +60,6 @@ def extract_info_from_caption(caption: str):
     return info if info["episode"] else None
 
 
-@app.on_message(filters.command("setchannel") & filters.private)
 async def set_channel_command(client, message: Message):
     """Set the target channel for uploads"""
     try:
@@ -106,7 +104,6 @@ async def set_channel_command(client, message: Message):
         await message.reply_text(f"❌ An error occurred: {str(e)}")
 
 
-@app.on_message(filters.command("collect") & filters.private)
 async def collect_command(client, message: Message):
     """Start collection mode"""
     try:
@@ -137,14 +134,6 @@ async def collect_command(client, message: Message):
         await message.reply_text(f"❌ An error occurred: {str(e)}")
 
 
-@app.on_message(
-    filters.private & 
-    (filters.document | filters.video | filters.audio | filters.photo) &
-    ~filters.command("collect") &
-    ~filters.command("upload") &
-    ~filters.command("clear") &
-    ~filters.command("setchannel")
-)
 async def handle_file_collection(client, message: Message):
     """Handle files sent during collection mode"""
     try:
@@ -202,7 +191,6 @@ async def handle_file_collection(client, message: Message):
         await message.reply_text(f"❌ Error processing file: {str(e)}")
 
 
-@app.on_message(filters.command("upload") & filters.private)
 async def upload_command(client, message: Message):
     """Sort and upload all collected files"""
     try:
@@ -307,7 +295,6 @@ async def upload_command(client, message: Message):
         await message.reply_text(f"❌ An error occurred: {str(e)}")
 
 
-@app.on_message(filters.command("clear") & filters.private)
 async def clear_command(client, message: Message):
     """Clear all collected files and deactivate collection mode"""
     try:
@@ -327,7 +314,6 @@ async def clear_command(client, message: Message):
         await message.reply_text(f"❌ An error occurred: {str(e)}")
 
 
-@app.on_message(filters.command("status") & filters.private)
 async def status_command(client, message: Message):
     """Show current collection status"""
     try:
@@ -362,3 +348,16 @@ async def status_command(client, message: Message):
     except Exception as e:
         logger.error(f"Error in status command: {e}")
         await message.reply_text(f"❌ An error occurred: {str(e)}")
+
+
+def register_handlers(app):
+    app.on_message(filters.command("setchannel") & filters.private)(set_channel_command)
+    app.on_message(filters.command("collect") & filters.private)(collect_command)
+    app.on_message(filters.command("upload") & filters.private)(upload_command)
+    app.on_message(filters.command("clear") & filters.private)(clear_command)
+    app.on_message(filters.command("status") & filters.private)(status_command)
+    app.on_message(
+        filters.private & 
+        (filters.document | filters.video | filters.audio | filters.photo) &
+        ~filters.command(["collect", "upload", "clear", "setchannel", "status", "start", "help", "about"])
+    )(handle_file_collection)
