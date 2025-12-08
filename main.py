@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pyrogram import idle
 from bot.client import CaptionBot
 
 logging.basicConfig(
@@ -11,7 +12,7 @@ async def main():
     app = CaptionBot()
     await app.start()
     print("Bot started successfully!")
-    await app.idle()
+    await idle()
 
 if __name__ == "__main__":
     asyncio.run(main())
