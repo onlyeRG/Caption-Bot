@@ -1,15 +1,9 @@
 import logging
 from pyrogram import filters
-from bot.client import CaptionBot
 from bot.config import Config
 
 logger = logging.getLogger(__name__)
-app = CaptionBot()
 
-@app.on_message(
-    filters.channel & 
-    (filters.document | filters.video | filters.audio | filters.photo)
-)
 async def auto_caption(client, message):
     try:
         media = message.document or message.video or message.audio or message.photo
@@ -38,3 +32,9 @@ async def auto_caption(client, message):
         
     except Exception as e:
         logger.error(f"Error editing caption: {e}")
+
+def register_handlers(app):
+    app.on_message(
+        filters.channel & 
+        (filters.document | filters.video | filters.audio | filters.photo)
+    )(auto_caption)
