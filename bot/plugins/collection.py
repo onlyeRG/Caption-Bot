@@ -1,7 +1,9 @@
 import re
 import logging
+import asyncio
 from pyrogram import filters
 from pyrogram.types import Message
+from pyrogram.errors import FloodWait
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
@@ -219,16 +221,19 @@ async def upload_command(client, message: Message):
             )
         )
         
-        await message.reply_text(
+        status_msg = await message.reply_text(
             f"📤 **Starting upload of {len(sorted_files)} files...**\n\n"
-            "This may take a while depending on file sizes."
+            "This may take a while. I'll add delays to avoid flood limits."
         )
         
         uploaded = 0
         failed = 0
         
-        for file_data in sorted_files:
+        for idx, file_data in enumerate(sorted_files, 1):
             try:
+                if idx > 1:
+                    await asyncio.sleep(3)  # 3 second delay between uploads
+                
                 # Get the original message
                 original_msg = await client.get_messages(
                     file_data["chat_id"],
@@ -247,36 +252,59 @@ async def upload_command(client, message: Message):
                     f"• Quality: {quality}"
                 )
                 
-                # Copy file to target channel with new caption
-                if file_data["file_type"] == "document":
-                    await client.send_document(
-                        collection_state["target_channel"],
-                        original_msg.document.file_id,
-                        caption=clean_caption
-                    )
-                elif file_data["file_type"] == "video":
-                    await client.send_video(
-                        collection_state["target_channel"],
-                        original_msg.video.file_id,
-                        caption=clean_caption
-                    )
-                elif file_data["file_type"] == "audio":
-                    await client.send_audio(
-                        collection_state["target_channel"],
-                        original_msg.audio.file_id,
-                        caption=clean_caption
-                    )
-                elif file_data["file_type"] == "photo":
-                    await client.send_photo(
-                        collection_state["target_channel"],
-                        original_msg.photo.file_id,
-                        caption=clean_caption
-                    )
-                
-                uploaded += 1
+                while True:
+                    try:
+                        # Copy file to target channel with new caption
+                        if file_data["file_type"] == "document":
+                            await client.send_document(
+                                collection_state["target_channel"],
+                                original_msg.document.file_id,
+                                caption=clean_caption
+                            )
+                        elif file_data["file_type"] == "video":
+                            await client.send_video(
+                                collection_state["target_channel"],
+                                original_msg.video.file_id,
+                                caption=clean_caption
+                            )
+                        elif file_data["file_type"] == "audio":
+                            await client.send_audio(
+                                collection_state["target_channel"],
+                                original_msg.audio.file_id,
+                                caption=clean_caption
+                            )
+                        elif file_data["file_type"] == "photo":
+                            await client.send_photo(
+                                collection_state["target_channel"],
+                                original_msg.photo.file_id,
+                                caption=clean_caption
+                            )
+                        
+                        uploaded += 1
+                        
+                        # Update status every 5 files
+                        if uploaded % 5 == 0:
+                            await status_msg.edit_text(
+                                f"📤 **Upload Progress**\n\n"
+                                f"Uploaded: {uploaded}/{len(sorted_files)}\n"
+                                f"Failed: {failed}"
+                            )
+                        
+                        break  # Success, exit retry loop
+                        
+                    except FloodWait as e:
+                        wait_time = e.value
+                        logger.warning(f"FloodWait: Waiting {wait_time} seconds")
+                        await status_msg.edit_text(
+                            f"⏳ **Flood limit reached!**\n\n"
+                            f"Waiting {wait_time} seconds before continuing...\n"
+                            f"Uploaded: {uploaded}/{len(sorted_files)}"
+                        )
+                        await asyncio.sleep(wait_time)
+                        # Retry after waiting
                 
             except Exception as e:
-                logger.error(f"Error uploading file: {e}")
+                logger.error(f"Error uploading file E{file_data['episode']} {file_data['quality']}: {e}")
                 failed += 1
         
         # Clear collection after upload
