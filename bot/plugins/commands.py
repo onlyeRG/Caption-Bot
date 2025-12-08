@@ -1,12 +1,9 @@
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from bot.client import CaptionBot
 from bot.config import Config
 from bot.utils.messages import Messages
 
-app = CaptionBot()
 
-@app.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
     await message.reply_text(
         Messages.START_TEXT.format(message.from_user.first_name, Config.ADMIN_USERNAME),
@@ -22,7 +19,6 @@ async def start_command(client, message):
         disable_web_page_preview=True
     )
 
-@app.on_message(filters.command("help") & filters.private)
 async def help_command(client, message):
     await message.reply_text(
         Messages.HELP_TEXT,
@@ -36,7 +32,6 @@ async def help_command(client, message):
         disable_web_page_preview=True
     )
 
-@app.on_message(filters.command("about") & filters.private)
 async def about_command(client, message):
     await message.reply_text(
         Messages.ABOUT_TEXT,
@@ -51,7 +46,6 @@ async def about_command(client, message):
         disable_web_page_preview=True
     )
 
-@app.on_callback_query()
 async def callback_handler(client, callback_query: CallbackQuery):
     data = callback_query.data
     
@@ -110,3 +104,9 @@ async def callback_handler(client, callback_query: CallbackQuery):
         await callback_query.message.delete()
         if callback_query.message.reply_to_message:
             await callback_query.message.reply_to_message.delete()
+
+def register_handlers(app):
+    app.on_message(filters.command("start") & filters.private)(start_command)
+    app.on_message(filters.command("help") & filters.private)(help_command)
+    app.on_message(filters.command("about") & filters.private)(about_command)
+    app.on_callback_query()(callback_handler)
