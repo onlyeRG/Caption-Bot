@@ -225,41 +225,31 @@ async def upload_command(client, message: Message):
                     file_data["message_id"]
                 )
                 
-                # Format clean caption
-                series_name = file_data["series"]
-                season = file_data["season"]
-                episode = file_data["episode"]
-                quality = file_data["quality"]
-                
-                clean_caption = (
-                    f"{series_name} [S{season}]\n"
-                    f"[ E{episode} ]\n"
-                    f"• Quality: {quality}"
-                )
+                caption_to_use = file_data["original_caption"]
                 
                 if file_data["file_type"] == "document":
                     await client.send_document(
                         message.chat.id,
                         original_msg.document.file_id,
-                        caption=clean_caption
+                        caption=caption_to_use
                     )
                 elif file_data["file_type"] == "video":
                     await client.send_video(
                         message.chat.id,
                         original_msg.video.file_id,
-                        caption=clean_caption
+                        caption=caption_to_use
                     )
                 elif file_data["file_type"] == "audio":
                     await client.send_audio(
                         message.chat.id,
                         original_msg.audio.file_id,
-                        caption=clean_caption
+                        caption=caption_to_use
                     )
                 elif file_data["file_type"] == "photo":
                     await client.send_photo(
                         message.chat.id,
                         original_msg.photo.file_id,
-                        caption=clean_caption
+                        caption=caption_to_use
                     )
                 
                 uploaded += 1
