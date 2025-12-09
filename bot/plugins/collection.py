@@ -109,13 +109,6 @@ async def set_channel_command(client, message: Message):
 async def collect_command(client, message: Message):
     """Start collection mode"""
     try:
-        if not collection_state["target_channel"]:
-            await message.reply_text(
-                "❌ **Please set a target channel first!**\n\n"
-                "Use: `/setchannel <channel_id>`"
-            )
-            return
-        
         collection_state["active"] = True
         collection_state["files"] = []
         
@@ -127,7 +120,7 @@ async def collect_command(client, message: Message):
             "• Season number\n"
             "• Episode number\n"
             "• Quality\n\n"
-            "When done, use `/upload` to organize and send them to the channel.\n"
+            "When done, use `/upload` to organize and send them back to you.\n"
             "Use `/clear` to cancel and clear all files."
         )
     
@@ -204,10 +197,6 @@ async def upload_command(client, message: Message):
             await message.reply_text("❌ No files collected yet!")
             return
         
-        if not collection_state["target_channel"]:
-            await message.reply_text("❌ No target channel set!")
-            return
-        
         files = collection_state["files"]
         
         # Sort files: first by episode, then by quality
@@ -222,8 +211,7 @@ async def upload_command(client, message: Message):
         )
         
         status_msg = await message.reply_text(
-            f"📤 **Starting upload of {len(sorted_files)} files...**\n\n"
-            "This may take a while. I'll add delays to avoid flood limits."
+            f"📤 **Starting upload of {len(sorted_files)} files...**"
         )
         
         uploaded = 0
@@ -231,9 +219,6 @@ async def upload_command(client, message: Message):
         
         for idx, file_data in enumerate(sorted_files, 1):
             try:
-                if idx > 1:
-                    await asyncio.sleep(3)  # 3 second delay between uploads
-                
                 # Get the original message
                 original_msg = await client.get_messages(
                     file_data["chat_id"],
@@ -252,56 +237,40 @@ async def upload_command(client, message: Message):
                     f"• Quality: {quality}"
                 )
                 
-                while True:
-                    try:
-                        # Copy file to target channel with new caption
-                        if file_data["file_type"] == "document":
-                            await client.send_document(
-                                collection_state["target_channel"],
-                                original_msg.document.file_id,
-                                caption=clean_caption
-                            )
-                        elif file_data["file_type"] == "video":
-                            await client.send_video(
-                                collection_state["target_channel"],
-                                original_msg.video.file_id,
-                                caption=clean_caption
-                            )
-                        elif file_data["file_type"] == "audio":
-                            await client.send_audio(
-                                collection_state["target_channel"],
-                                original_msg.audio.file_id,
-                                caption=clean_caption
-                            )
-                        elif file_data["file_type"] == "photo":
-                            await client.send_photo(
-                                collection_state["target_channel"],
-                                original_msg.photo.file_id,
-                                caption=clean_caption
-                            )
-                        
-                        uploaded += 1
-                        
-                        # Update status every 5 files
-                        if uploaded % 5 == 0:
-                            await status_msg.edit_text(
-                                f"📤 **Upload Progress**\n\n"
-                                f"Uploaded: {uploaded}/{len(sorted_files)}\n"
-                                f"Failed: {failed}"
-                            )
-                        
-                        break  # Success, exit retry loop
-                        
-                    except FloodWait as e:
-                        wait_time = e.value
-                        logger.warning(f"FloodWait: Waiting {wait_time} seconds")
-                        await status_msg.edit_text(
-                            f"⏳ **Flood limit reached!**\n\n"
-                            f"Waiting {wait_time} seconds before continuing...\n"
-                            f"Uploaded: {uploaded}/{len(sorted_files)}"
-                        )
-                        await asyncio.sleep(wait_time)
-                        # Retry after waiting
+                if file_data["file_type"] == "document":
+                    await client.send_document(
+                        message.chat.id,
+                        original_msg.document.file_id,
+                        caption=clean_caption
+                    )
+                elif file_data["file_type"] == "video":
+                    await client.send_video(
+                        message.chat.id,
+                        original_msg.video.file_id,
+                        caption=clean_caption
+                    )
+                elif file_data["file_type"] == "audio":
+                    await client.send_audio(
+                        message.chat.id,
+                        original_msg.audio.file_id,
+                        caption=clean_caption
+                    )
+                elif file_data["file_type"] == "photo":
+                    await client.send_photo(
+                        message.chat.id,
+                        original_msg.photo.file_id,
+                        caption=clean_caption
+                    )
+                
+                uploaded += 1
+                
+                # Update status every 5 files
+                if uploaded % 5 == 0:
+                    await status_msg.edit_text(
+                        f"📤 **Upload Progress**\n\n"
+                        f"Uploaded: {uploaded}/{len(sorted_files)}\n"
+                        f"Failed: {failed}"
+                    )
                 
             except Exception as e:
                 logger.error(f"Error uploading file E{file_data['episode']} {file_data['quality']}: {e}")
@@ -345,18 +314,9 @@ async def clear_command(client, message: Message):
 async def status_command(client, message: Message):
     """Show current collection status"""
     try:
-        channel_info = "Not set"
-        if collection_state["target_channel"]:
-            try:
-                chat = await client.get_chat(collection_state["target_channel"])
-                channel_info = f"{chat.title or chat.first_name} (`{collection_state['target_channel']}`)"
-            except:
-                channel_info = f"`{collection_state['target_channel']}`"
-        
         status_text = (
             f"📊 **Collection Status**\n\n"
             f"**Mode:** {'🔄 Active' if collection_state['active'] else '⏸️ Inactive'}\n"
-            f"**Target Channel:** {channel_info}\n"
             f"**Files Collected:** {len(collection_state['files'])}\n\n"
         )
         
@@ -379,7 +339,6 @@ async def status_command(client, message: Message):
 
 
 def register_handlers(app):
-    app.on_message(filters.command("setchannel") & filters.private)(set_channel_command)
     app.on_message(filters.command("collect") & filters.private)(collect_command)
     app.on_message(filters.command("upload") & filters.private)(upload_command)
     app.on_message(filters.command("clear") & filters.private)(clear_command)
@@ -387,5 +346,5 @@ def register_handlers(app):
     app.on_message(
         filters.private & 
         (filters.document | filters.video | filters.audio | filters.photo) &
-        ~filters.command(["collect", "upload", "clear", "setchannel", "status", "start", "help", "about"])
+        ~filters.command(["collect", "upload", "clear", "status", "start", "help", "about"])
     )(handle_file_collection)
