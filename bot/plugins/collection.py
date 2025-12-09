@@ -61,6 +61,20 @@ def extract_info_from_caption(caption: str):
     
     return info if info["episode"] else None
 
+def format_caption(caption: str) -> str:
+    """
+    Remove .mp4 or .mkv extensions from caption and make it bold
+    """
+    if not caption:
+        return caption
+    
+    # Remove .mp4 or .mkv from the end of caption (case insensitive)
+    caption = re.sub(r'\.(?:mp4|mkv)$', '', caption, flags=re.IGNORECASE)
+    
+    # Make the caption bold using Markdown
+    caption = f"**{caption}**"
+    
+    return caption
 
 async def set_channel_command(client, message: Message):
     """Set the target channel for uploads"""
@@ -225,7 +239,7 @@ async def upload_command(client, message: Message):
                     file_data["message_id"]
                 )
                 
-                caption_to_use = file_data["original_caption"]
+                caption_to_use = format_caption(file_data["original_caption"])
                 
                 if file_data["file_type"] == "document":
                     await client.send_document(
