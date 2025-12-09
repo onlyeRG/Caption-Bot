@@ -213,72 +213,89 @@ async def upload_command(client, message: Message):
         
         files = collection_state["files"]
         
-        # Sort files: first by episode, then by quality
-        quality_order = {"480p": 1, "720p": 2, "1080p": 3, "2160p": 4, "Unknown": 0}
+        episodes = defaultdict(list)
+        for file_data in files:
+            episodes[file_data["episode"]].append(file_data)
         
-        sorted_files = sorted(
-            files,
-            key=lambda x: (
-                int(x["episode"]),
-                quality_order.get(x["quality"], 0)
+        sorted_episodes = sorted(episodes.keys(), key=lambda x: int(x))
+        
+        quality_order = {"480p": 1, "720p": 2, "1080p": 3, "2160p": 4, "Unknown": 0}
+        for episode in episodes:
+            episodes[episode] = sorted(
+                episodes[episode],
+                key=lambda x: quality_order.get(x["quality"], 0)
             )
-        )
         
         status_msg = await message.reply_text(
-            f"📤 **Starting upload of {len(sorted_files)} files...**"
+            f"📤 **Starting upload of {len(files)} files in {len(sorted_episodes)} episodes...**"
         )
         
         uploaded = 0
         failed = 0
         
-        for idx, file_data in enumerate(sorted_files, 1):
+        sticker_file_id = "CAACAgUAAyEFAASDb2pxAAEBkQNpN7z9HbBGRreIDUJWfjtVBb8b4AACDAADQ3PJEmHxRHgThp-SNgQ"
+        
+        for episode_num in sorted_episodes:
+            episode_files = episodes[episode_num]
+            
+            # Upload all files for this episode
+            for file_data in episode_files:
+                try:
+                    # Get the original message
+                    original_msg = await client.get_messages(
+                        file_data["chat_id"],
+                        file_data["message_id"]
+                    )
+                    
+                    caption_to_use = format_caption(file_data["original_caption"])
+                    
+                    if file_data["file_type"] == "document":
+                        await client.send_document(
+                            message.chat.id,
+                            original_msg.document.file_id,
+                            caption=caption_to_use
+                        )
+                    elif file_data["file_type"] == "video":
+                        await client.send_video(
+                            message.chat.id,
+                            original_msg.video.file_id,
+                            caption=caption_to_use
+                        )
+                    elif file_data["file_type"] == "audio":
+                        await client.send_audio(
+                            message.chat.id,
+                            original_msg.audio.file_id,
+                            caption=caption_to_use
+                        )
+                    elif file_data["file_type"] == "photo":
+                        await client.send_photo(
+                            message.chat.id,
+                            original_msg.photo.file_id,
+                            caption=caption_to_use
+                        )
+                    
+                    uploaded += 1
+                    
+                except Exception as e:
+                    logger.error(f"Error uploading file E{file_data['episode']} {file_data['quality']}: {e}")
+                    failed += 1
+            
             try:
-                # Get the original message
-                original_msg = await client.get_messages(
-                    file_data["chat_id"],
-                    file_data["message_id"]
+                await client.send_sticker(
+                    message.chat.id,
+                    sticker_file_id,
+                    caption=f"Episode: {int(episode_num)}"
                 )
-                
-                caption_to_use = format_caption(file_data["original_caption"])
-                
-                if file_data["file_type"] == "document":
-                    await client.send_document(
-                        message.chat.id,
-                        original_msg.document.file_id,
-                        caption=caption_to_use
-                    )
-                elif file_data["file_type"] == "video":
-                    await client.send_video(
-                        message.chat.id,
-                        original_msg.video.file_id,
-                        caption=caption_to_use
-                    )
-                elif file_data["file_type"] == "audio":
-                    await client.send_audio(
-                        message.chat.id,
-                        original_msg.audio.file_id,
-                        caption=caption_to_use
-                    )
-                elif file_data["file_type"] == "photo":
-                    await client.send_photo(
-                        message.chat.id,
-                        original_msg.photo.file_id,
-                        caption=caption_to_use
-                    )
-                
-                uploaded += 1
-                
-                # Update status every 5 files
-                if uploaded % 5 == 0:
-                    await status_msg.edit_text(
-                        f"📤 **Upload Progress**\n\n"
-                        f"Uploaded: {uploaded}/{len(sorted_files)}\n"
-                        f"Failed: {failed}"
-                    )
-                
             except Exception as e:
-                logger.error(f"Error uploading file E{file_data['episode']} {file_data['quality']}: {e}")
-                failed += 1
+                logger.error(f"Error sending sticker for episode {episode_num}: {e}")
+            
+            # Update status after each episode
+            await status_msg.edit_text(
+                f"📤 **Upload Progress**\n\n"
+                f"Episodes completed: {sorted_episodes.index(episode_num) + 1}/{len(sorted_episodes)}\n"
+                f"Files uploaded: {uploaded}/{len(files)}\n"
+                f"Failed: {failed}"
+            )
         
         # Clear collection after upload
         collection_state["active"] = False
@@ -286,8 +303,9 @@ async def upload_command(client, message: Message):
         
         await message.reply_text(
             f"✅ **Upload complete!**\n\n"
-            f"**Uploaded:** {uploaded} files\n"
-            f"**Failed:** {failed} files\n\n"
+            f"**Episodes processed:** {len(sorted_episodes)}\n"
+            f"**Files uploaded:** {uploaded}\n"
+            f"**Failed:** {failed}\n\n"
             f"Collection mode has been deactivated."
         )
     
