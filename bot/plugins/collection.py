@@ -238,7 +238,6 @@ async def upload_command(client, message: Message):
         for episode_num in sorted_episodes:
             episode_files = episodes[episode_num]
             
-            # Send episode announcement text first
             try:
                 await client.send_message(
                     message.chat.id,
@@ -246,15 +245,6 @@ async def upload_command(client, message: Message):
                 )
             except Exception as e:
                 logger.error(f"Error sending episode announcement for {episode_num}: {e}")
-            
-            # Send sticker without caption
-            try:
-                await client.send_sticker(
-                    message.chat.id,
-                    sticker_file_id
-                )
-            except Exception as e:
-                logger.error(f"Error sending sticker for episode {episode_num}: {e}")
             
             # Upload all files for this episode
             for file_data in episode_files:
@@ -297,6 +287,14 @@ async def upload_command(client, message: Message):
                 except Exception as e:
                     logger.error(f"Error uploading file E{file_data['episode']} {file_data['quality']}: {e}")
                     failed += 1
+            
+            try:
+                await client.send_sticker(
+                    message.chat.id,
+                    sticker_file_id
+                )
+            except Exception as e:
+                logger.error(f"Error sending sticker for episode {episode_num}: {e}")
             
             # Update status after each episode
             await status_msg.edit_text(
