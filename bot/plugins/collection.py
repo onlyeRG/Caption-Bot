@@ -309,7 +309,10 @@ async def upload_command(client, message: Message):
         
         sticker_file_id = "CAACAgUAAyEFAASDb2pxAAEBkQNpN7z9HbBGRreIDUJWfjtVBb8b4AACDAADQ3PJEmHxRHgThp-SNgQ"
         
-        thumb_param = collection_state["thumbnail_path"] if collection_state["thumbnail_path"] and os.path.exists(collection_state["thumbnail_path"]) else None
+        custom_thumb = None
+        if collection_state["thumbnail_path"] and os.path.exists(collection_state["thumbnail_path"]):
+            custom_thumb = collection_state["thumbnail_path"]
+            logger.info(f"Using custom thumbnail: {custom_thumb}")
         
         for episode_num in sorted_episodes:
             episode_files = episodes[episode_num]
@@ -334,26 +337,47 @@ async def upload_command(client, message: Message):
                     caption_to_use = format_caption(file_data["original_caption"])
                     
                     if file_data["file_type"] == "document":
-                        await client.send_document(
-                            message.chat.id,
-                            original_msg.document.file_id,
-                            caption=caption_to_use,
-                            thumb=thumb_param
-                        )
+                        if custom_thumb:
+                            await client.send_document(
+                                message.chat.id,
+                                original_msg.document.file_id,
+                                caption=caption_to_use,
+                                thumb=custom_thumb
+                            )
+                        else:
+                            await client.send_document(
+                                message.chat.id,
+                                original_msg.document.file_id,
+                                caption=caption_to_use
+                            )
                     elif file_data["file_type"] == "video":
-                        await client.send_video(
-                            message.chat.id,
-                            original_msg.video.file_id,
-                            caption=caption_to_use,
-                            thumb=thumb_param
-                        )
+                        if custom_thumb:
+                            await client.send_video(
+                                message.chat.id,
+                                original_msg.video.file_id,
+                                caption=caption_to_use,
+                                thumb=custom_thumb
+                            )
+                        else:
+                            await client.send_video(
+                                message.chat.id,
+                                original_msg.video.file_id,
+                                caption=caption_to_use
+                            )
                     elif file_data["file_type"] == "audio":
-                        await client.send_audio(
-                            message.chat.id,
-                            original_msg.audio.file_id,
-                            caption=caption_to_use,
-                            thumb=thumb_param
-                        )
+                        if custom_thumb:
+                            await client.send_audio(
+                                message.chat.id,
+                                original_msg.audio.file_id,
+                                caption=caption_to_use,
+                                thumb=custom_thumb
+                            )
+                        else:
+                            await client.send_audio(
+                                message.chat.id,
+                                original_msg.audio.file_id,
+                                caption=caption_to_use
+                            )
                     elif file_data["file_type"] == "photo":
                         await client.send_photo(
                             message.chat.id,
