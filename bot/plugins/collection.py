@@ -1,6 +1,7 @@
 import re
 import logging
 import asyncio
+import os
 from pyrogram import filters
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
@@ -13,8 +14,13 @@ logger = logging.getLogger(__name__)
 collection_state = {
     "active": False,
     "target_channel": None,
-    "files": []  # List of dicts with file metadata
+    "files": [],  # List of dicts with file metadata
+    "thumbnail_path": None  # Store custom thumbnail path
 }
+
+THUMB_DIR = "thumbnails"
+if not os.path.exists(THUMB_DIR):
+    os.makedirs(THUMB_DIR)
 
 def extract_info_from_caption(caption: str):
     """
@@ -75,6 +81,74 @@ def format_caption(caption: str) -> str:
     caption = f"**{caption}**"
     
     return caption
+
+async def handle_photo_thumbnail(client, message: Message):
+    """Handle photo uploads and save as custom thumbnail"""
+    try:
+        # Don't process if in collection mode and it's a file being collected
+        if collection_state["active"]:
+            # Check if this photo has caption with episode info
+            info = extract_info_from_caption(message.caption) if message.caption else None
+            if info and info["episode"]:
+                # This is a file to collect, not a thumbnail
+                await handle_file_collection(client, message)
+                return
+        
+        # Download and save the photo as thumbnail
+        thumb_path = os.path.join(THUMB_DIR, f"custom_thumb_{message.chat.id}.jpg")
+        
+        # Download the photo in highest quality
+        downloaded_path = await message.download(file_name=thumb_path)
+        
+        collection_state["thumbnail_path"] = downloaded_path
+        
+        await message.reply_text(
+            "✅ **Custom thumbnail saved!**\n\n"
+            "This thumbnail will be used for all future uploads.\n\n"
+            "Use `/viewthumb` to see it or `/delthumb` to remove it."
+        )
+    
+    except Exception as e:
+        logger.error(f"Error saving thumbnail: {e}")
+        await message.reply_text(f"❌ Error saving thumbnail: {str(e)}")
+
+async def view_thumb_command(client, message: Message):
+    """Show the currently saved thumbnail"""
+    try:
+        if not collection_state["thumbnail_path"] or not os.path.exists(collection_state["thumbnail_path"]):
+            await message.reply_text("❌ No custom thumbnail set. Upload a photo to set one.")
+            return
+        
+        await message.reply_photo(
+            collection_state["thumbnail_path"],
+            caption="📸 **Current Custom Thumbnail**"
+        )
+    
+    except Exception as e:
+        logger.error(f"Error viewing thumbnail: {e}")
+        await message.reply_text(f"❌ Error viewing thumbnail: {str(e)}")
+
+async def del_thumb_command(client, message: Message):
+    """Remove the saved thumbnail"""
+    try:
+        if not collection_state["thumbnail_path"]:
+            await message.reply_text("❌ No custom thumbnail set.")
+            return
+        
+        # Delete the file if it exists
+        if os.path.exists(collection_state["thumbnail_path"]):
+            os.remove(collection_state["thumbnail_path"])
+        
+        collection_state["thumbnail_path"] = None
+        
+        await message.reply_text(
+            "🗑️ **Custom thumbnail removed!**\n\n"
+            "Default thumbnails will be used for uploads."
+        )
+    
+    except Exception as e:
+        logger.error(f"Error deleting thumbnail: {e}")
+        await message.reply_text(f"❌ Error deleting thumbnail: {str(e)}")
 
 async def set_channel_command(client, message: Message):
     """Set the target channel for uploads"""
@@ -235,6 +309,8 @@ async def upload_command(client, message: Message):
         
         sticker_file_id = "CAACAgUAAyEFAASDb2pxAAEBkQNpN7z9HbBGRreIDUJWfjtVBb8b4AACDAADQ3PJEmHxRHgThp-SNgQ"
         
+        thumb_param = collection_state["thumbnail_path"] if collection_state["thumbnail_path"] and os.path.exists(collection_state["thumbnail_path"]) else None
+        
         for episode_num in sorted_episodes:
             episode_files = episodes[episode_num]
             
@@ -261,19 +337,22 @@ async def upload_command(client, message: Message):
                         await client.send_document(
                             message.chat.id,
                             original_msg.document.file_id,
-                            caption=caption_to_use
+                            caption=caption_to_use,
+                            thumb=thumb_param
                         )
                     elif file_data["file_type"] == "video":
                         await client.send_video(
                             message.chat.id,
                             original_msg.video.file_id,
-                            caption=caption_to_use
+                            caption=caption_to_use,
+                            thumb=thumb_param
                         )
                     elif file_data["file_type"] == "audio":
                         await client.send_audio(
                             message.chat.id,
                             original_msg.audio.file_id,
-                            caption=caption_to_use
+                            caption=caption_to_use,
+                            thumb=thumb_param
                         )
                     elif file_data["file_type"] == "photo":
                         await client.send_photo(
@@ -372,8 +451,11 @@ def register_handlers(app):
     app.on_message(filters.command("upload") & filters.private)(upload_command)
     app.on_message(filters.command("clear") & filters.private)(clear_command)
     app.on_message(filters.command("status") & filters.private)(status_command)
+    app.on_message(filters.command("viewthumb") & filters.private)(view_thumb_command)
+    app.on_message(filters.command("delthumb") & filters.private)(del_thumb_command)
+    app.on_message(filters.private & filters.photo)(handle_photo_thumbnail)
     app.on_message(
         filters.private & 
-        (filters.document | filters.video | filters.audio | filters.photo) &
-        ~filters.command(["collect", "upload", "clear", "status", "start", "help", "about"])
+        (filters.document | filters.video | filters.audio) &
+        ~filters.command(["collect", "upload", "clear", "status", "start", "help", "about", "viewthumb", "delthumb"])
     )(handle_file_collection)
