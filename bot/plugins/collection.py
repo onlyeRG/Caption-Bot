@@ -5,6 +5,7 @@ import os
 from pyrogram import filters
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
+from pyrogram.enums import ParseMode
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
@@ -325,53 +326,73 @@ async def upload_command(client, message: Message):
             except Exception as e:
                 logger.error(f"Error sending episode announcement for {episode_num}: {e}")
             
-            # Upload all files for this episode
             for file_data in episode_files:
                 try:
                     caption_to_use = format_caption(file_data["original_caption"])
                     
-                    # Send with custom thumbnail based on file type
+                    # Get the original message
+                    original_msg = await client.get_messages(
+                        file_data["chat_id"],
+                        file_data["message_id"]
+                    )
+                    
+                    # If custom thumbnail is set, download and re-upload the file
                     if custom_thumb:
-                        # Get the original message
-                        original_msg = await client.get_messages(
-                            file_data["chat_id"],
-                            file_data["message_id"]
-                        )
+                        temp_dir = "temp_files"
+                        if not os.path.exists(temp_dir):
+                            os.makedirs(temp_dir)
                         
-                        if file_data["file_type"] == "document" and original_msg.document:
-                            await client.send_document(
-                                message.chat.id,
-                                original_msg.document.file_id,
-                                caption=caption_to_use,
-                                thumb=custom_thumb
-                            )
-                        elif file_data["file_type"] == "video" and original_msg.video:
+                        # Download the file
+                        downloaded_file = await original_msg.download(file_name=temp_dir)
+                        
+                        if file_data["file_type"] == "video" and original_msg.video:
                             await client.send_video(
                                 message.chat.id,
-                                original_msg.video.file_id,
+                                downloaded_file,
                                 caption=caption_to_use,
                                 thumb=custom_thumb,
-                                supports_streaming=True
+                                supports_streaming=True,
+                                duration=original_msg.video.duration,
+                                width=original_msg.video.width,
+                                height=original_msg.video.height,
+                                parse_mode=ParseMode.MARKDOWN
+                            )
+                        elif file_data["file_type"] == "document" and original_msg.document:
+                            await client.send_document(
+                                message.chat.id,
+                                downloaded_file,
+                                caption=caption_to_use,
+                                thumb=custom_thumb,
+                                parse_mode=ParseMode.MARKDOWN
                             )
                         elif file_data["file_type"] == "audio" and original_msg.audio:
                             await client.send_audio(
                                 message.chat.id,
-                                original_msg.audio.file_id,
+                                downloaded_file,
                                 caption=caption_to_use,
-                                thumb=custom_thumb
+                                thumb=custom_thumb,
+                                parse_mode=ParseMode.MARKDOWN
                             )
-                        elif file_data["file_type"] == "photo" and original_msg.photo:
-                            await client.send_photo(
+                        else:
+                            await client.send_document(
                                 message.chat.id,
-                                original_msg.photo.file_id,
-                                caption=caption_to_use
+                                downloaded_file,
+                                caption=caption_to_use,
+                                thumb=custom_thumb,
+                                parse_mode=ParseMode.MARKDOWN
                             )
+                        
+                        # Delete the temp file after upload
+                        if os.path.exists(downloaded_file):
+                            os.remove(downloaded_file)
                     else:
+                        # No custom thumbnail, use copy_message
                         await client.copy_message(
                             message.chat.id,
                             file_data["chat_id"],
                             file_data["message_id"],
-                            caption=caption_to_use
+                            caption=caption_to_use,
+                            parse_mode=ParseMode.MARKDOWN
                         )
                     
                     uploaded += 1
