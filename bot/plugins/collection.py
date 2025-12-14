@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 collection_state = {
     "active": False,
     "target_channel": None,
-    "files": []  # List of dicts with file metadata
+    "files": [],  # List of dicts with file metadata
+    "custom_thumbnail": None  # Will store the file_id of user's custom thumbnail
 }
 
 def extract_info_from_caption(caption: str):
@@ -235,6 +236,8 @@ async def upload_command(client, message: Message):
         
         sticker_file_id = "CAACAgUAAyEFAASDb2pxAAEBkQNpN7z9HbBGRreIDUJWfjtVBb8b4AACDAADQ3PJEmHxRHgThp-SNgQ"
         
+        custom_thumb = collection_state.get("custom_thumbnail")
+        
         for episode_num in sorted_episodes:
             episode_files = episodes[episode_num]
             
@@ -267,7 +270,9 @@ async def upload_command(client, message: Message):
                         await client.send_video(
                             message.chat.id,
                             original_msg.video.file_id,
-                            caption=caption_to_use
+                            caption=caption_to_use,
+                            thumb=custom_thumb,  # Use custom thumbnail if set
+                            supports_streaming=False  # Prevent Telegram from auto-generating thumbnails
                         )
                     elif file_data["file_type"] == "audio":
                         await client.send_audio(
@@ -346,7 +351,8 @@ async def status_command(client, message: Message):
         status_text = (
             f"📊 **Collection Status**\n\n"
             f"**Mode:** {'🔄 Active' if collection_state['active'] else '⏸️ Inactive'}\n"
-            f"**Files Collected:** {len(collection_state['files'])}\n\n"
+            f"**Files Collected:** {len(collection_state['files'])}\n"
+            f"**Custom Thumbnail:** {'✅ Set' if collection_state.get('custom_thumbnail') else '❌ Not Set'}\n\n"
         )
         
         if collection_state["files"]:
@@ -367,14 +373,87 @@ async def status_command(client, message: Message):
         await message.reply_text(f"❌ An error occurred: {str(e)}")
 
 
+async def set_thumbnail_command(client, message: Message):
+    """Set a custom thumbnail for all video uploads"""
+    try:
+        # Check if user replied to a photo
+        if not message.reply_to_message or not message.reply_to_message.photo:
+            await message.reply_text(
+                "❌ **Please reply to a photo with `/setthumbnail` to set it as your custom thumbnail.**\n\n"
+                "Example:\n"
+                "1. Send or forward a photo\n"
+                "2. Reply to that photo with `/setthumbnail`\n\n"
+                "The thumbnail will be used for all video uploads until you change or delete it."
+            )
+            return
+        
+        # Store the photo file_id
+        photo = message.reply_to_message.photo
+        collection_state["custom_thumbnail"] = photo.file_id
+        
+        await message.reply_text(
+            "✅ **Custom thumbnail set successfully!**\n\n"
+            "This thumbnail will now be used for all video uploads.\n"
+            "It will be preserved exactly as you provided it, without any modifications.\n\n"
+            "Use `/deletethumbnail` to remove it."
+        )
+    
+    except Exception as e:
+        logger.error(f"Error in setthumbnail command: {e}")
+        await message.reply_text(f"❌ An error occurred: {str(e)}")
+
+
+async def delete_thumbnail_command(client, message: Message):
+    """Delete the custom thumbnail"""
+    try:
+        if not collection_state["custom_thumbnail"]:
+            await message.reply_text("❌ **No custom thumbnail is currently set.**")
+            return
+        
+        collection_state["custom_thumbnail"] = None
+        
+        await message.reply_text(
+            "🗑️ **Custom thumbnail deleted successfully!**\n\n"
+            "Videos will now use Telegram's default behavior."
+        )
+    
+    except Exception as e:
+        logger.error(f"Error in deletethumbnail command: {e}")
+        await message.reply_text(f"❌ An error occurred: {str(e)}")
+
+
+async def show_thumbnail_command(client, message: Message):
+    """Show the current custom thumbnail if set"""
+    try:
+        if not collection_state["custom_thumbnail"]:
+            await message.reply_text(
+                "❌ **No custom thumbnail is currently set.**\n\n"
+                "Use `/setthumbnail` (reply to a photo) to set one."
+            )
+            return
+        
+        # Send the current thumbnail
+        await client.send_photo(
+            message.chat.id,
+            collection_state["custom_thumbnail"],
+            caption="📸 **Current Custom Thumbnail**\n\nThis will be used for all video uploads."
+        )
+    
+    except Exception as e:
+        logger.error(f"Error in showthumbnail command: {e}")
+        await message.reply_text(f"❌ An error occurred: {str(e)}")
+
+
 def register_handlers(app):
     app.on_message(filters.command("collect") & filters.private)(collect_command)
     app.on_message(filters.command("upload") & filters.private)(upload_command)
     app.on_message(filters.command("clear") & filters.private)(clear_command)
     app.on_message(filters.command("status") & filters.private)(status_command)
+    app.on_message(filters.command("setthumbnail") & filters.private)(set_thumbnail_command)
+    app.on_message(filters.command("deletethumbnail") & filters.private)(delete_thumbnail_command)
+    app.on_message(filters.command("showthumbnail") & filters.private)(show_thumbnail_command)
     app.on_message(
         filters.private & 
         (filters.document | filters.video | filters.audio | filters.photo) &
-        ~filters.command(["collect", "upload", "clear", "status", "start", "help", "about"])
+        ~filters.command(["collect", "upload", "clear", "status", "start", "help", "about", "setthumbnail", "deletethumbnail", "showthumbnail"])
     )(handle_file_collection)
-                
