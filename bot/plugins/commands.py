@@ -1,5 +1,6 @@
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.enums import ParseMode
 from bot.config import Config
 from bot.utils.messages import Messages
 
@@ -15,7 +16,7 @@ async def start_command(client, message):
             ],
             [InlineKeyboardButton("🔐 Close", callback_data="close")]
         ]),
-        parse_mode="markdown",
+        parse_mode=ParseMode.MARKDOWN,
         disable_web_page_preview=True
     )
 
@@ -28,7 +29,7 @@ async def help_command(client, message):
                 InlineKeyboardButton("🔐 Close", callback_data="close")
             ]
         ]),
-        parse_mode="html",
+        parse_mode=ParseMode.HTML,
         disable_web_page_preview=True
     )
 
@@ -42,7 +43,7 @@ async def about_command(client, message):
             ],
             [InlineKeyboardButton("🤩 Help", callback_data="help")]
         ]),
-        parse_mode="html",
+        parse_mode=ParseMode.HTML,
         disable_web_page_preview=True
     )
 
@@ -58,7 +59,7 @@ async def callback_handler(client, callback_query: CallbackQuery):
                     InlineKeyboardButton("🔐 Close", callback_data="close")
                 ]
             ]),
-            parse_mode="html"
+            parse_mode=ParseMode.HTML
         )
     
     elif data == "help":
@@ -70,7 +71,7 @@ async def callback_handler(client, callback_query: CallbackQuery):
                     InlineKeyboardButton("🔐 Close", callback_data="close")
                 ]
             ]),
-            parse_mode="html"
+            parse_mode=ParseMode.HTML
         )
     
     elif data == "about":
@@ -83,7 +84,7 @@ async def callback_handler(client, callback_query: CallbackQuery):
                 ],
                 [InlineKeyboardButton("🤩 Help", callback_data="help")]
             ]),
-            parse_mode="html"
+            parse_mode=ParseMode.HTML
         )
     
     elif data == "back":
@@ -97,7 +98,7 @@ async def callback_handler(client, callback_query: CallbackQuery):
                 ],
                 [InlineKeyboardButton("🔐 Close", callback_data="close")]
             ]),
-            parse_mode="markdown"
+            parse_mode=ParseMode.MARKDOWN
         )
     
     elif data == "close":
