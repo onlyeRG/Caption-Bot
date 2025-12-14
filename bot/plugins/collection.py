@@ -328,60 +328,49 @@ async def upload_command(client, message: Message):
             # Upload all files for this episode
             for file_data in episode_files:
                 try:
-                    # Get the original message
-                    original_msg = await client.get_messages(
-                        file_data["chat_id"],
-                        file_data["message_id"]
-                    )
-                    
                     caption_to_use = format_caption(file_data["original_caption"])
                     
-                    if file_data["file_type"] == "document":
-                        if custom_thumb:
+                    # Send with custom thumbnail based on file type
+                    if custom_thumb:
+                        # Get the original message
+                        original_msg = await client.get_messages(
+                            file_data["chat_id"],
+                            file_data["message_id"]
+                        )
+                        
+                        if file_data["file_type"] == "document" and original_msg.document:
                             await client.send_document(
                                 message.chat.id,
                                 original_msg.document.file_id,
                                 caption=caption_to_use,
                                 thumb=custom_thumb
                             )
-                        else:
-                            await client.send_document(
-                                message.chat.id,
-                                original_msg.document.file_id,
-                                caption=caption_to_use
-                            )
-                    elif file_data["file_type"] == "video":
-                        if custom_thumb:
+                        elif file_data["file_type"] == "video" and original_msg.video:
                             await client.send_video(
                                 message.chat.id,
                                 original_msg.video.file_id,
                                 caption=caption_to_use,
-                                thumb=custom_thumb
+                                thumb=custom_thumb,
+                                supports_streaming=True
                             )
-                        else:
-                            await client.send_video(
-                                message.chat.id,
-                                original_msg.video.file_id,
-                                caption=caption_to_use
-                            )
-                    elif file_data["file_type"] == "audio":
-                        if custom_thumb:
+                        elif file_data["file_type"] == "audio" and original_msg.audio:
                             await client.send_audio(
                                 message.chat.id,
                                 original_msg.audio.file_id,
                                 caption=caption_to_use,
                                 thumb=custom_thumb
                             )
-                        else:
-                            await client.send_audio(
+                        elif file_data["file_type"] == "photo" and original_msg.photo:
+                            await client.send_photo(
                                 message.chat.id,
-                                original_msg.audio.file_id,
+                                original_msg.photo.file_id,
                                 caption=caption_to_use
                             )
-                    elif file_data["file_type"] == "photo":
-                        await client.send_photo(
+                    else:
+                        await client.copy_message(
                             message.chat.id,
-                            original_msg.photo.file_id,
+                            file_data["chat_id"],
+                            file_data["message_id"],
                             caption=caption_to_use
                         )
                     
