@@ -9,6 +9,7 @@ I'm a **Series File Organizer Bot** that helps you collect, organize, and upload
 • Collect multiple files temporarily
 • Sort by episode and quality
 • Upload with clean formatted captions
+• Custom thumbnail support for videos
 
 **Commands:**
 • /setchannel - Set target upload channel
@@ -16,6 +17,9 @@ I'm a **Series File Organizer Bot** that helps you collect, organize, and upload
 • /upload - Sort and upload collected files
 • /clear - Clear collection
 • /status - View collection status
+• /setthumbnail - Set custom thumbnail
+• /deletethumbnail - Remove custom thumbnail
+• /showthumbnail - View current thumbnail
 
 Maintained by @{}
 """
@@ -25,9 +29,10 @@ Maintained by @{}
 
 <b>Setup Steps:</b>
 1. Use /setchannel to set your target channel
-2. Use /collect to start collection mode
-3. Send files with captions containing series info
-4. Use /upload to sort and send to channel
+2. (Optional) Use /setthumbnail to set a custom thumbnail
+3. Use /collect to start collection mode
+4. Send files with captions containing series info
+5. Use /upload to sort and send to channel
 
 <b>Caption Format:</b>
 Your captions should contain:
@@ -44,6 +49,13 @@ Example: "Breaking Bad S01 E03 720p"
 • /upload - Upload sorted files
 • /clear - Clear collection
 • /status - Check status
+
+<b>Thumbnail Commands:</b>
+• /setthumbnail - Reply to a photo to set as thumbnail
+• /deletethumbnail - Remove custom thumbnail
+• /showthumbnail - View current thumbnail
+
+<b>Note:</b> Once set, your custom thumbnail will be used for ALL video uploads without any modifications. It will persist until you delete or change it.
 """
 
     ABOUT_TEXT = """
