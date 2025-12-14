@@ -13,8 +13,7 @@ logger = logging.getLogger(__name__)
 collection_state = {
     "active": False,
     "target_channel": None,
-    "files": [],  # List of dicts with file metadata
-    "custom_thumbnail": None  # Will store the file_id of user's custom thumbnail
+    "files": []  # List of dicts with file metadata
 }
 
 def extract_info_from_caption(caption: str):
@@ -202,7 +201,7 @@ async def handle_file_collection(client, message: Message):
 
 
 async def upload_command(client, message: Message):
-    """Sort and forward all collected files"""
+    """Sort and upload all collected files"""
     try:
         if not collection_state["active"]:
             await message.reply_text("❌ Collection mode is not active!")
@@ -228,15 +227,13 @@ async def upload_command(client, message: Message):
             )
         
         status_msg = await message.reply_text(
-            f"📤 **Starting to forward {len(files)} files in {len(sorted_episodes)} episodes...**"
+            f"📤 **Starting upload of {len(files)} files in {len(sorted_episodes)} episodes...**"
         )
         
-        forwarded = 0
+        uploaded = 0
         failed = 0
         
         sticker_file_id = "CAACAgUAAyEFAASDb2pxAAEBkQNpN7z9HbBGRreIDUJWfjtVBb8b4AACDAADQ3PJEmHxRHgThp-SNgQ"
-        
-        custom_thumb = collection_state.get("custom_thumbnail")
         
         for episode_num in sorted_episodes:
             episode_files = episodes[episode_num]
@@ -244,38 +241,51 @@ async def upload_command(client, message: Message):
             try:
                 await client.send_message(
                     message.chat.id,
-                    f"📺 **Episode: {int(episode_num)}**"
+                    f"Episode: {int(episode_num)}"
                 )
             except Exception as e:
                 logger.error(f"Error sending episode announcement for {episode_num}: {e}")
             
+            # Upload all files for this episode
             for file_data in episode_files:
                 try:
-                    await client.forward_messages(
-                        chat_id=message.chat.id,
-                        from_chat_id=file_data["chat_id"],
-                        message_ids=file_data["message_id"]
+                    # Get the original message
+                    original_msg = await client.get_messages(
+                        file_data["chat_id"],
+                        file_data["message_id"]
                     )
                     
-                    forwarded += 1
+                    caption_to_use = format_caption(file_data["original_caption"])
                     
-                except FloodWait as e:
-                    logger.warning(f"FloodWait: Sleeping for {e.value} seconds")
-                    await asyncio.sleep(e.value)
-                    
-                    try:
-                        await client.forward_messages(
-                            chat_id=message.chat.id,
-                            from_chat_id=file_data["chat_id"],
-                            message_ids=file_data["message_id"]
+                    if file_data["file_type"] == "document":
+                        await client.send_document(
+                            message.chat.id,
+                            original_msg.document.file_id,
+                            caption=caption_to_use
                         )
-                        forwarded += 1
-                    except Exception as retry_error:
-                        logger.error(f"Error forwarding file E{file_data['episode']} {file_data['quality']} after retry: {retry_error}")
-                        failed += 1
-                        
+                    elif file_data["file_type"] == "video":
+                        await client.send_video(
+                            message.chat.id,
+                            original_msg.video.file_id,
+                            caption=caption_to_use
+                        )
+                    elif file_data["file_type"] == "audio":
+                        await client.send_audio(
+                            message.chat.id,
+                            original_msg.audio.file_id,
+                            caption=caption_to_use
+                        )
+                    elif file_data["file_type"] == "photo":
+                        await client.send_photo(
+                            message.chat.id,
+                            original_msg.photo.file_id,
+                            caption=caption_to_use
+                        )
+                    
+                    uploaded += 1
+                    
                 except Exception as e:
-                    logger.error(f"Error forwarding file E{file_data['episode']} {file_data['quality']}: {e}")
+                    logger.error(f"Error uploading file E{file_data['episode']} {file_data['quality']}: {e}")
                     failed += 1
             
             try:
@@ -286,20 +296,22 @@ async def upload_command(client, message: Message):
             except Exception as e:
                 logger.error(f"Error sending sticker for episode {episode_num}: {e}")
             
+            # Update status after each episode
             await status_msg.edit_text(
-                f"📤 **Forward Progress**\n\n"
+                f"📤 **Upload Progress**\n\n"
                 f"Episodes completed: {sorted_episodes.index(episode_num) + 1}/{len(sorted_episodes)}\n"
-                f"Files forwarded: {forwarded}/{len(files)}\n"
+                f"Files uploaded: {uploaded}/{len(files)}\n"
                 f"Failed: {failed}"
             )
         
+        # Clear collection after upload
         collection_state["active"] = False
         collection_state["files"] = []
         
         await message.reply_text(
-            f"✅ **Forwarding complete!**\n\n"
+            f"✅ **Upload complete!**\n\n"
             f"**Episodes processed:** {len(sorted_episodes)}\n"
-            f"**Files forwarded:** {forwarded}\n"
+            f"**Files uploaded:** {uploaded}\n"
             f"**Failed:** {failed}\n\n"
             f"Collection mode has been deactivated."
         )
@@ -334,11 +346,11 @@ async def status_command(client, message: Message):
         status_text = (
             f"📊 **Collection Status**\n\n"
             f"**Mode:** {'🔄 Active' if collection_state['active'] else '⏸️ Inactive'}\n"
-            f"**Files Collected:** {len(collection_state['files'])}\n"
-            f"**Custom Thumbnail:** {'✅ Set' if collection_state.get('custom_thumbnail') else '❌ Not Set'}\n\n"
+            f"**Files Collected:** {len(collection_state['files'])}\n\n"
         )
         
         if collection_state["files"]:
+            # Group by episode
             episodes = defaultdict(list)
             for f in collection_state["files"]:
                 episodes[f["episode"]].append(f)
@@ -355,45 +367,13 @@ async def status_command(client, message: Message):
         await message.reply_text(f"❌ An error occurred: {str(e)}")
 
 
-async def set_thumbnail_command(client, message: Message):
-    """Inform user that thumbnails are preserved via forwarding"""
-    await message.reply_text(
-        "ℹ️ **Thumbnail information:**\n\n"
-        "This bot now forwards files instead of re-uploading them.\n"
-        "Forwarding automatically preserves the original thumbnail exactly as it is.\n\n"
-        "You don't need to set a custom thumbnail - the original will be kept!"
-    )
-
-
-async def delete_thumbnail_command(client, message: Message):
-    """Inform user that thumbnails are preserved via forwarding"""
-    await message.reply_text(
-        "ℹ️ **Thumbnail information:**\n\n"
-        "This bot now forwards files instead of re-uploading them.\n"
-        "Forwarding automatically preserves the original thumbnail exactly as it is.\n\n"
-        "You don't need to manage thumbnails - originals are always kept!"
-    )
-
-
-async def show_thumbnail_command(client, message: Message):
-    """Inform user that thumbnails are preserved via forwarding"""
-    await message.reply_text(
-        "ℹ️ **Thumbnail information:**\n\n"
-        "This bot now forwards files instead of re-uploading them.\n"
-        "Forwarding automatically preserves the original thumbnail exactly as it is.\n\n"
-        "Your files will keep their original thumbnails when forwarded!"
-    )
-
 def register_handlers(app):
     app.on_message(filters.command("collect") & filters.private)(collect_command)
     app.on_message(filters.command("upload") & filters.private)(upload_command)
     app.on_message(filters.command("clear") & filters.private)(clear_command)
     app.on_message(filters.command("status") & filters.private)(status_command)
-    app.on_message(filters.command("setthumbnail") & filters.private)(set_thumbnail_command)
-    app.on_message(filters.command("deletethumbnail") & filters.private)(delete_thumbnail_command)
-    app.on_message(filters.command("showthumbnail") & filters.private)(show_thumbnail_command)
     app.on_message(
         filters.private & 
         (filters.document | filters.video | filters.audio | filters.photo) &
-        ~filters.command(["collect", "upload", "clear", "status", "start", "help", "about", "setthumbnail", "deletethumbnail", "showthumbnail"])
+        ~filters.command(["collect", "upload", "clear", "status", "start", "help", "about"])
     )(handle_file_collection)
