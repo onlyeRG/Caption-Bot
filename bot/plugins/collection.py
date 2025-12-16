@@ -233,7 +233,7 @@ async def upload_command(client, message: Message):
         uploaded = 0
         failed = 0
         
-        sticker_file_id = "CAACAgUAAyEFAASDb2pxAAEBkQNpN7z9HbBGRreIDUJWfjtVBb8b4AACDAADQ3PJEmHxRHgThp-SNgQ"
+        sticker_file_id = "CAACAgUAAxkBAAEQA6ppQSnwhAAB6b8IKv2TtiG-jcEgsEQAAv0TAAKjMWBUnDlKQXMRBi82BA"
         
         for episode_num in sorted_episodes:
             episode_files = episodes[episode_num]
