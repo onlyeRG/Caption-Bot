@@ -4,6 +4,7 @@ import asyncio
 from pyrogram import filters
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
+from pyrogram.enums import ParseMode
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 collection_state = {
     "active": False,
     "files": [],
-    "tag_remove": False   # /tagremove toggle
+    "tag_remove": False
 }
 
 # =========================
@@ -43,13 +44,12 @@ QUALITY_PRIORITY = {
 }
 
 # =========================
-# TAG REMOVE HELPER
+# TAG REMOVE
 # =========================
 
 def remove_tags(text: str) -> str:
     if not text:
         return text
-    # remove @username or [@username]
     text = re.sub(r'\[@?[A-Za-z0-9_\.]+\]?', '', text)
     text = re.sub(r'\s{2,}', ' ', text).strip()
     return text
@@ -83,7 +83,7 @@ def extract_info_from_caption(text: str):
     if q:
         info["quality"] = q.group(1).lower()
 
-    series_raw = text[:season_start] if season_start is not None else text
+    series_raw = text[:season_start] if season_start else text
     series = series_raw
     series = re.sub(r'\[.*?\]', '', series)
     series = re.sub(r'join.*', '', series, flags=re.IGNORECASE)
@@ -120,7 +120,7 @@ async def collect_command(client, message: Message):
         "Use /upload when done.\n"
         "Use /status to check.\n"
         "Use /clear to cancel.",
-        parse_mode="markdown"
+        parse_mode=ParseMode.MARKDOWN
     )
 
 async def clear_command(client, message: Message):
@@ -129,7 +129,7 @@ async def clear_command(client, message: Message):
     collection_state["files"] = []
     await message.reply_text(
         f"🗑️ **Collection cleared!**\n\nRemoved {count} files.",
-        parse_mode="markdown"
+        parse_mode=ParseMode.MARKDOWN
     )
 
 async def status_command(client, message: Message):
@@ -147,15 +147,15 @@ async def status_command(client, message: Message):
         qualities = [f["quality"] for f in episodes[ep]]
         text += f"• **E{ep}:** {', '.join(qualities)}\n"
 
-    await message.reply_text(text, parse_mode="markdown")
+    await message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 async def tagremove_command(client, message: Message):
     collection_state["tag_remove"] = not collection_state["tag_remove"]
     await message.reply_text(
         f"🏷️ **Tag Remove:** {'ON ✅' if collection_state['tag_remove'] else 'OFF ❌'}\n\n"
-        "When ON, only @tags will be removed.\n"
+        "Only @tags will be removed.\n"
         "Everything else stays SAME.",
-        parse_mode="markdown"
+        parse_mode=ParseMode.MARKDOWN
     )
 
 # =========================
@@ -183,7 +183,7 @@ async def handle_file_collection(client, message: Message):
     if not info:
         await message.reply_text(
             "⚠️ **Episode detect nahi hua. File skip.**",
-            parse_mode="markdown"
+            parse_mode=ParseMode.MARKDOWN
         )
         return
 
@@ -211,7 +211,7 @@ async def handle_file_collection(client, message: Message):
         f"**Episode:** E{file_data['episode']}\n"
         f"**Quality:** {file_data['quality']}\n\n"
         f"**Total files collected:** {len(collection_state['files'])}",
-        parse_mode="markdown"
+        parse_mode=ParseMode.MARKDOWN
     )
 
 # =========================
@@ -220,7 +220,7 @@ async def handle_file_collection(client, message: Message):
 
 async def upload_command(client, message: Message):
     if not collection_state["files"]:
-        await message.reply_text("❌ **No files to upload.**", parse_mode="markdown")
+        await message.reply_text("❌ **No files to upload.**", parse_mode=ParseMode.MARKDOWN)
         return
 
     episodes = defaultdict(list)
@@ -230,7 +230,7 @@ async def upload_command(client, message: Message):
     for ep in episodes:
         episodes[ep].sort(key=lambda x: QUALITY_PRIORITY.get(x["quality"], 0))
 
-    status_msg = await message.reply_text("📤 **Upload started...**", parse_mode="markdown")
+    status_msg = await message.reply_text("📤 **Upload started...**", parse_mode=ParseMode.MARKDOWN)
     uploaded = failed = 0
 
     sticker_id = "CAACAgUAAxkBAAEQA6ppQSnwhAAB6b8IKv2TtiG-jcEgsEQAAv0TAAKjMWBUnDlKQXMRBi82BA"
@@ -247,25 +247,25 @@ async def upload_command(client, message: Message):
                     f"**Quality:** {f['quality']}\n\n"
                     f"**Uploaded:** {uploaded}\n"
                     f"**Failed:** {failed}",
-                    parse_mode="markdown"
+                    parse_mode=ParseMode.MARKDOWN
                 )
 
                 msg = await client.get_messages(f["chat_id"], f["message_id"])
-
                 raw_cap = f["caption"]
+
                 if raw_cap and collection_state["tag_remove"]:
                     raw_cap = remove_tags(raw_cap)
 
                 cap = format_caption(raw_cap)
 
                 if f["file_type"] == "document":
-                    await client.send_document(message.chat.id, msg.document.file_id, caption=cap, parse_mode="markdown")
+                    await client.send_document(message.chat.id, msg.document.file_id, caption=cap, parse_mode=ParseMode.MARKDOWN)
                 elif f["file_type"] == "video":
-                    await client.send_video(message.chat.id, msg.video.file_id, caption=cap, parse_mode="markdown")
+                    await client.send_video(message.chat.id, msg.video.file_id, caption=cap, parse_mode=ParseMode.MARKDOWN)
                 elif f["file_type"] == "audio":
-                    await client.send_audio(message.chat.id, msg.audio.file_id, caption=cap, parse_mode="markdown")
+                    await client.send_audio(message.chat.id, msg.audio.file_id, caption=cap, parse_mode=ParseMode.MARKDOWN)
                 elif f["file_type"] == "photo":
-                    await client.send_photo(message.chat.id, msg.photo.file_id, caption=cap, parse_mode="markdown")
+                    await client.send_photo(message.chat.id, msg.photo.file_id, caption=cap, parse_mode=ParseMode.MARKDOWN)
 
                 uploaded += 1
 
@@ -284,7 +284,7 @@ async def upload_command(client, message: Message):
         f"✅ **Upload completed!**\n\n"
         f"**Uploaded:** {uploaded}\n"
         f"**Failed:** {failed}",
-        parse_mode="markdown"
+        parse_mode=ParseMode.MARKDOWN
     )
 
 # =========================
