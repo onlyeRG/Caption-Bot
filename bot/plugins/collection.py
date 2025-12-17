@@ -98,16 +98,6 @@ def extract_info_from_caption(text: str):
     return info if info["episode"] else None
 
 # =========================
-# FORMAT CAPTION
-# =========================
-
-def format_caption(caption: str):
-    if not caption:
-        return caption
-    caption = re.sub(r'\.(mp4|mkv)$', '', caption, flags=re.IGNORECASE)
-    return f"**{caption}**"
-
-# =========================
 # COMMANDS
 # =========================
 
@@ -198,8 +188,7 @@ async def handle_file_collection(client, message: Message):
             "document" if message.document else
             "video" if message.video else
             "audio" if message.audio else "photo"
-        ),
-        "caption": caption
+        )
     }
 
     collection_state["files"].append(file_data)
@@ -236,6 +225,15 @@ async def upload_command(client, message: Message):
     sticker_id = "CAACAgUAAxkBAAEQA6ppQSnwhAAB6b8IKv2TtiG-jcEgsEQAAv0TAAKjMWBUnDlKQXMRBi82BA"
 
     for ep in sorted(episodes, key=lambda x: int(x)):
+        qualities = [f["quality"] for f in episodes[ep]]
+
+        # 🎬 Episode heading (FIXED)
+        await client.send_message(
+            message.chat.id,
+            f"🎬 **Episode {ep}**\n" + "\n".join(qualities),
+            parse_mode=ParseMode.MARKDOWN
+        )
+
         total_files = len(episodes[ep])
 
         for index, f in enumerate(episodes[ep], start=1):
@@ -251,21 +249,15 @@ async def upload_command(client, message: Message):
                 )
 
                 msg = await client.get_messages(f["chat_id"], f["message_id"])
-                raw_cap = f["caption"]
-
-                if raw_cap and collection_state["tag_remove"]:
-                    raw_cap = remove_tags(raw_cap)
-
-                cap = format_caption(raw_cap)
 
                 if f["file_type"] == "document":
-                    await client.send_document(message.chat.id, msg.document.file_id, caption=cap, parse_mode=ParseMode.MARKDOWN)
+                    await client.send_document(message.chat.id, msg.document.file_id)
                 elif f["file_type"] == "video":
-                    await client.send_video(message.chat.id, msg.video.file_id, caption=cap, parse_mode=ParseMode.MARKDOWN)
+                    await client.send_video(message.chat.id, msg.video.file_id)
                 elif f["file_type"] == "audio":
-                    await client.send_audio(message.chat.id, msg.audio.file_id, caption=cap, parse_mode=ParseMode.MARKDOWN)
+                    await client.send_audio(message.chat.id, msg.audio.file_id)
                 elif f["file_type"] == "photo":
-                    await client.send_photo(message.chat.id, msg.photo.file_id, caption=cap, parse_mode=ParseMode.MARKDOWN)
+                    await client.send_photo(message.chat.id, msg.photo.file_id)
 
                 uploaded += 1
 
