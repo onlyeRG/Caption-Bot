@@ -1,6 +1,7 @@
 import re
 import logging
 import asyncio
+from html import escape
 from pyrogram import filters
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
@@ -24,24 +25,19 @@ collection_state = {
 # =========================
 
 SEASON_EPISODE_PATTERNS = [
-    re.compile(r'\[S(\d+)\]\s*\[(?:E|EP|Episode)\s*(\d+)\]', re.IGNORECASE),
-    re.compile(r'\[S(\d+)\s*(?:E|EP|Episode)\s*(\d+)\]', re.IGNORECASE),
-    re.compile(r'S(\d+)\s*(?:E|EP|Episode)\s*(\d+)', re.IGNORECASE),
-    re.compile(r'S(\d+)[-_](?:E|EP|Episode)\s*(\d+)', re.IGNORECASE),
-    re.compile(r'Season\s*(\d+)\s*Episode\s*(\d+)', re.IGNORECASE),
+    re.compile(r'\[S(\d+)\]\s*\[(?:E|EP|Episode)\s*[-–:]*\s*(\d+)\]', re.I),
+    re.compile(r'\[S(\d+)\s*(?:E|EP|Episode)\s*[-–:]*\s*(\d+)\]', re.I),
+    re.compile(r'S(\d+)\s*(?:E|EP|Episode)\s*[-–:]*\s*(\d+)', re.I),
+    re.compile(r'S(\d+)[-_](?:E|EP|Episode)\s*[-–:]*\s*(\d+)', re.I),
+    re.compile(r'Season\s*(\d+)\s*Episode\s*[-–:]*\s*(\d+)', re.I),
 ]
 
-EPISODE_ONLY_PATTERN = re.compile(r'(?:E|EP|Episode)\s*(\d+)', re.IGNORECASE)
-QUALITY_PATTERN = re.compile(r'(4k|2160p|1440p|1080p|720p|480p)', re.IGNORECASE)
+EPISODE_ONLY_PATTERN = re.compile(
+    r'(?:E|EP|Episode)\s*[-–:]*\s*(\d+)',
+    re.IGNORECASE
+)
 
-QUALITY_PRIORITY = {
-    "480p": 1,
-    "720p": 2,
-    "1080p": 3,
-    "1440p": 4,
-    "2160p": 5,
-    "4k": 5
-}
+QUALITY_PATTERN = re.compile(r'(4k|2160p|1440p|1080p|720p|480p)', re.I)
 
 # =========================
 # HELPERS
@@ -50,13 +46,36 @@ QUALITY_PRIORITY = {
 def remove_tags(text: str) -> str:
     if not text:
         return text
+
+    # remove full promo lines
+    promo_patterns = [
+        r'^.*powered\s*by\s*:.*$',
+        r'^.*main\s*channel\s*:.*$',
+        r'^.*join\s*our\s*channel.*$',
+        r'^.*join\s*channel.*$',
+        r'^.*official\s*channel.*$'
+    ]
+
+    for p in promo_patterns:
+        text = re.sub(p, '', text, flags=re.I | re.M)
+
+    # remove arrow style lines
+    text = re.sub(r'^➳.*$', '', text, flags=re.M)
+
+    # remove @tags and [@tags]
     text = re.sub(r'\[@?[A-Za-z0-9_\.]+\]?', '', text)
+
     return re.sub(r'\s{2,}', ' ', text).strip()
 
 def remove_extension(text: str) -> str:
     if not text:
         return text
-    return re.sub(r'\.(mkv|mp4|avi|mov|webm)$', '', text, flags=re.IGNORECASE).strip()
+    return re.sub(r'\.(mkv|mp4|avi|mov|webm)$', '', text, flags=re.I).strip()
+
+def make_caption_safe(text: str):
+    if not text:
+        return None
+    return f"<b>{escape(text)}</b>"
 
 # =========================
 # EXTRACT INFO
@@ -67,13 +86,11 @@ def extract_info_from_caption(text: str):
         return None
 
     info = {"episode": None, "quality": None}
-    season_start = None
 
     for p in SEASON_EPISODE_PATTERNS:
         m = p.search(text)
         if m:
             info["episode"] = m.group(2).zfill(2)
-            season_start = m.start()
             break
 
     if not info["episode"]:
@@ -95,30 +112,24 @@ async def collect_command(client, message: Message):
     collection_state["active"] = True
     collection_state["files"] = []
     await message.reply_text(
-        "🔄 **Collection mode activated**\n\n"
-        "Send files now.\n"
-        "Use /upload when done.\n"
-        "Use /status to check.\n"
-        "Use /clear to cancel.",
+        "🔄 **Collection mode activated**\n\nSend files now.\nUse /upload when done.",
         parse_mode=ParseMode.MARKDOWN
     )
 
 async def clear_command(client, message: Message):
-    count = len(collection_state["files"])
+    c = len(collection_state["files"])
     collection_state["active"] = False
     collection_state["files"] = []
     await message.reply_text(
-        f"🗑️ **Collection cleared!**\n\nRemoved {count} files.",
+        f"🗑️ **Collection cleared!**\nRemoved {c} files.",
         parse_mode=ParseMode.MARKDOWN
     )
 
 async def status_command(client, message: Message):
-    text = (
-        f"📊 **Collection Status**\n\n"
-        f"**Mode:** {'ACTIVE' if collection_state['active'] else 'INACTIVE'}\n"
-        f"**Files Collected:** {len(collection_state['files'])}"
+    await message.reply_text(
+        f"📊 **Files Collected:** {len(collection_state['files'])}",
+        parse_mode=ParseMode.MARKDOWN
     )
-    await message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 async def tagremove_command(client, message: Message):
     collection_state["tag_remove"] = not collection_state["tag_remove"]
@@ -143,10 +154,7 @@ async def handle_file_collection(client, message: Message):
     info = extract_info_from_caption(caption)
 
     if not info:
-        await message.reply_text(
-            "⚠️ **Episode detect nahi hua. File skip.**",
-            parse_mode=ParseMode.MARKDOWN
-        )
+        await message.reply_text("⚠️ **Episode detect nahi hua.**", parse_mode=ParseMode.MARKDOWN)
         return
 
     collection_state["files"].append({
@@ -162,10 +170,7 @@ async def handle_file_collection(client, message: Message):
     })
 
     await message.reply_text(
-        "✅ **File added to collection!**\n\n"
-        f"**Episode:** E{info['episode']}\n"
-        f"**Quality:** {info['quality'] or 'Unknown'}\n\n"
-        f"**Total files collected:** {len(collection_state['files'])}",
+        f"✅ **File added**\nEpisode: E{info['episode']}\nTotal: {len(collection_state['files'])}",
         parse_mode=ParseMode.MARKDOWN
     )
 
@@ -174,15 +179,9 @@ async def handle_file_collection(client, message: Message):
 # =========================
 
 async def upload_command(client, message: Message):
-    if not collection_state["files"]:
-        await message.reply_text("❌ **No files to upload.**", parse_mode=ParseMode.MARKDOWN)
-        return
-
     episodes = defaultdict(list)
     for f in collection_state["files"]:
         episodes[f["episode"]].append(f)
-
-    status_msg = await message.reply_text("📤 **Upload started...**", parse_mode=ParseMode.MARKDOWN)
 
     sticker_id = "CAACAgUAAxkBAAEQA6ppQSnwhAAB6b8IKv2TtiG-jcEgsEQAAv0TAAKjMWBUnDlKQXMRBi82BA"
 
@@ -196,22 +195,22 @@ async def upload_command(client, message: Message):
         for f in episodes[ep]:
             try:
                 msg = await client.get_messages(f["chat_id"], f["message_id"])
-                raw_cap = msg.caption or ""
+                raw = msg.caption or ""
 
                 if collection_state["tag_remove"]:
-                    raw_cap = remove_tags(raw_cap)
+                    raw = remove_tags(raw)
 
-                raw_cap = remove_extension(raw_cap)
-                raw_cap = f"**{raw_cap}**" if raw_cap else None
+                raw = remove_extension(raw)
+                raw = make_caption_safe(raw)
 
-                if f["file_type"] == "document":
-                    await client.send_document(message.chat.id, msg.document.file_id, caption=raw_cap, parse_mode=ParseMode.MARKDOWN)
-                elif f["file_type"] == "video":
-                    await client.send_video(message.chat.id, msg.video.file_id, caption=raw_cap, parse_mode=ParseMode.MARKDOWN)
+                if f["file_type"] == "video":
+                    await client.send_video(message.chat.id, msg.video.file_id, caption=raw, parse_mode=ParseMode.HTML)
+                elif f["file_type"] == "document":
+                    await client.send_document(message.chat.id, msg.document.file_id, caption=raw, parse_mode=ParseMode.HTML)
                 elif f["file_type"] == "audio":
-                    await client.send_audio(message.chat.id, msg.audio.file_id, caption=raw_cap, parse_mode=ParseMode.MARKDOWN)
+                    await client.send_audio(message.chat.id, msg.audio.file_id, caption=raw, parse_mode=ParseMode.HTML)
                 elif f["file_type"] == "photo":
-                    await client.send_photo(message.chat.id, msg.photo.file_id, caption=raw_cap, parse_mode=ParseMode.MARKDOWN)
+                    await client.send_photo(message.chat.id, msg.photo.file_id, caption=raw, parse_mode=ParseMode.HTML)
 
             except FloodWait as fw:
                 await asyncio.sleep(fw.value)
@@ -220,8 +219,7 @@ async def upload_command(client, message: Message):
 
     collection_state["active"] = False
     collection_state["files"] = []
-
-    await message.reply_text("✅ **Upload completed!**", parse_mode=ParseMode.MARKDOWN)
+    await message.reply_text("✅ **Upload completed**", parse_mode=ParseMode.MARKDOWN)
 
 # =========================
 # REGISTER
@@ -234,6 +232,5 @@ def register_handlers(app):
     app.on_message(filters.command("status") & filters.private)(status_command)
     app.on_message(filters.command("tagremove") & filters.private)(tagremove_command)
     app.on_message(
-        filters.private &
-        (filters.document | filters.video | filters.audio | filters.photo)
+        filters.private & (filters.document | filters.video | filters.audio | filters.photo)
     )(handle_file_collection)
