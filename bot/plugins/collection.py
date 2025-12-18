@@ -44,15 +44,19 @@ QUALITY_PRIORITY = {
 }
 
 # =========================
-# TAG REMOVE
+# HELPERS
 # =========================
 
 def remove_tags(text: str) -> str:
     if not text:
         return text
     text = re.sub(r'\[@?[A-Za-z0-9_\.]+\]?', '', text)
-    text = re.sub(r'\s{2,}', ' ', text).strip()
-    return text
+    return re.sub(r'\s{2,}', ' ', text).strip()
+
+def remove_extension(text: str) -> str:
+    if not text:
+        return text
+    return re.sub(r'\.(mkv|mp4|avi|mov|webm)$', '', text, flags=re.IGNORECASE).strip()
 
 # =========================
 # EXTRACT INFO
@@ -62,13 +66,12 @@ def extract_info_from_caption(text: str):
     if not text:
         return None
 
-    info = {"series": None, "season": None, "episode": None, "quality": None}
+    info = {"episode": None, "quality": None}
     season_start = None
 
     for p in SEASON_EPISODE_PATTERNS:
         m = p.search(text)
         if m:
-            info["season"] = m.group(1).zfill(2)
             info["episode"] = m.group(2).zfill(2)
             season_start = m.start()
             break
@@ -77,23 +80,10 @@ def extract_info_from_caption(text: str):
         m = EPISODE_ONLY_PATTERN.search(text)
         if m:
             info["episode"] = m.group(1).zfill(2)
-            season_start = m.start()
 
     q = QUALITY_PATTERN.search(text)
     if q:
         info["quality"] = q.group(1).lower()
-
-    series_raw = text[:season_start] if season_start else text
-    series = series_raw
-    series = re.sub(r'\[.*?\]', '', series)
-    series = re.sub(r'join.*', '', series, flags=re.IGNORECASE)
-    series = re.sub(r'official|quality|hdrip|webrip|bluray', '', series, flags=re.IGNORECASE)
-    series = re.sub(r'[┃━•#|]', ' ', series)
-    series = re.sub(r'\.(mp4|mkv|avi)$', '', series, flags=re.IGNORECASE)
-    series = re.sub(r'\s{2,}', ' ', series).strip()
-
-    if series:
-        info["series"] = series
 
     return info if info["episode"] else None
 
@@ -126,25 +116,14 @@ async def status_command(client, message: Message):
     text = (
         f"📊 **Collection Status**\n\n"
         f"**Mode:** {'ACTIVE' if collection_state['active'] else 'INACTIVE'}\n"
-        f"**Files Collected:** {len(collection_state['files'])}\n\n"
+        f"**Files Collected:** {len(collection_state['files'])}"
     )
-
-    episodes = defaultdict(list)
-    for f in collection_state["files"]:
-        episodes[f["episode"]].append(f)
-
-    for ep in sorted(episodes, key=lambda x: int(x)):
-        qualities = [f["quality"] for f in episodes[ep]]
-        text += f"• **E{ep}:** {', '.join(qualities)}\n"
-
     await message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 async def tagremove_command(client, message: Message):
     collection_state["tag_remove"] = not collection_state["tag_remove"]
     await message.reply_text(
-        f"🏷️ **Tag Remove:** {'ON ✅' if collection_state['tag_remove'] else 'OFF ❌'}\n\n"
-        "Only @tags will be removed.\n"
-        "Everything else stays SAME.",
+        f"🏷️ **Tag Remove:** {'ON ✅' if collection_state['tag_remove'] else 'OFF ❌'}",
         parse_mode=ParseMode.MARKDOWN
     )
 
@@ -156,19 +135,12 @@ async def handle_file_collection(client, message: Message):
     if not collection_state["active"]:
         return
 
-    caption = message.caption
-    if caption and collection_state["tag_remove"]:
+    caption = message.caption or ""
+
+    if collection_state["tag_remove"]:
         caption = remove_tags(caption)
 
-    info = extract_info_from_caption(caption) if caption else None
-
-    if not info:
-        media = message.document or message.video or message.audio
-        if media and media.file_name:
-            name = media.file_name
-            if collection_state["tag_remove"]:
-                name = remove_tags(name)
-            info = extract_info_from_caption(name)
+    info = extract_info_from_caption(caption)
 
     if not info:
         await message.reply_text(
@@ -177,7 +149,7 @@ async def handle_file_collection(client, message: Message):
         )
         return
 
-    file_data = {
+    collection_state["files"].append({
         "chat_id": message.chat.id,
         "message_id": message.id,
         "episode": info["episode"],
@@ -187,14 +159,12 @@ async def handle_file_collection(client, message: Message):
             "video" if message.video else
             "audio" if message.audio else "photo"
         )
-    }
-
-    collection_state["files"].append(file_data)
+    })
 
     await message.reply_text(
         "✅ **File added to collection!**\n\n"
         f"**Episode:** E{info['episode']}\n"
-        f"**Quality:** {file_data['quality']}\n\n"
+        f"**Quality:** {info['quality'] or 'Unknown'}\n\n"
         f"**Total files collected:** {len(collection_state['files'])}",
         parse_mode=ParseMode.MARKDOWN
     )
@@ -212,45 +182,27 @@ async def upload_command(client, message: Message):
     for f in collection_state["files"]:
         episodes[f["episode"]].append(f)
 
-    for ep in episodes:
-        episodes[ep].sort(key=lambda x: QUALITY_PRIORITY.get(x["quality"], 0))
-
     status_msg = await message.reply_text("📤 **Upload started...**", parse_mode=ParseMode.MARKDOWN)
-    uploaded = failed = 0
 
     sticker_id = "CAACAgUAAxkBAAEQA6ppQSnwhAAB6b8IKv2TtiG-jcEgsEQAAv0TAAKjMWBUnDlKQXMRBi82BA"
 
     for ep in sorted(episodes, key=lambda x: int(x)):
-        # 🎬 Episode heading (ONLY THIS LINE)
         await client.send_message(
             message.chat.id,
             f"🎬 **Episode {ep}**",
             parse_mode=ParseMode.MARKDOWN
         )
 
-        total_files = len(episodes[ep])
-
-        for index, f in enumerate(episodes[ep], start=1):
+        for f in episodes[ep]:
             try:
-                await status_msg.edit_text(
-                    f"📤 **Uploading**\n\n"
-                    f"**Episode:** E{ep}\n"
-                    f"**File:** {index} / {total_files}\n"
-                    f"**Quality:** {f['quality']}\n\n"
-                    f"**Uploaded:** {uploaded}\n"
-                    f"**Failed:** {failed}",
-                    parse_mode=ParseMode.MARKDOWN
-                )
-
                 msg = await client.get_messages(f["chat_id"], f["message_id"])
-                raw_cap = msg.caption
+                raw_cap = msg.caption or ""
 
-                if raw_cap and collection_state["tag_remove"]:
+                if collection_state["tag_remove"]:
                     raw_cap = remove_tags(raw_cap)
 
-                # 🔒 CAPTION ALWAYS BOLD
-                if raw_cap:
-                    raw_cap = f"**{raw_cap}**"
+                raw_cap = remove_extension(raw_cap)
+                raw_cap = f"**{raw_cap}**" if raw_cap else None
 
                 if f["file_type"] == "document":
                     await client.send_document(message.chat.id, msg.document.file_id, caption=raw_cap, parse_mode=ParseMode.MARKDOWN)
@@ -261,25 +213,15 @@ async def upload_command(client, message: Message):
                 elif f["file_type"] == "photo":
                     await client.send_photo(message.chat.id, msg.photo.file_id, caption=raw_cap, parse_mode=ParseMode.MARKDOWN)
 
-                uploaded += 1
-
             except FloodWait as fw:
                 await asyncio.sleep(fw.value)
-            except Exception as e:
-                failed += 1
-                logger.error(f"Upload error: {e}")
 
         await client.send_sticker(message.chat.id, sticker_id)
 
     collection_state["active"] = False
     collection_state["files"] = []
 
-    await message.reply_text(
-        f"✅ **Upload completed!**\n\n"
-        f"**Uploaded:** {uploaded}\n"
-        f"**Failed:** {failed}",
-        parse_mode=ParseMode.MARKDOWN
-    )
+    await message.reply_text("✅ **Upload completed!**", parse_mode=ParseMode.MARKDOWN)
 
 # =========================
 # REGISTER
