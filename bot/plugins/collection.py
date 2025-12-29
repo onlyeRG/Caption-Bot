@@ -34,7 +34,7 @@ SEASON_EPISODE_PATTERNS = [
 
 EPISODE_ONLY_PATTERN = re.compile(
     r'(?:E|EP|Episode)\s*[-–:]*\s*(\d+)',
-    re.IGNORECASE
+    re.I
 )
 
 QUALITY_PATTERN = re.compile(r'(4k|2160p|1440p|1080p|720p|480p)', re.I)
@@ -47,7 +47,7 @@ def remove_tags(text: str) -> str:
     if not text:
         return text
 
-    # remove full promo lines
+    # remove promo lines
     promo_patterns = [
         r'^.*powered\s*by\s*:.*$',
         r'^.*main\s*channel\s*:.*$',
@@ -59,11 +59,11 @@ def remove_tags(text: str) -> str:
     for p in promo_patterns:
         text = re.sub(p, '', text, flags=re.I | re.M)
 
-    # remove arrow style lines
+    # remove arrow lines
     text = re.sub(r'^➳.*$', '', text, flags=re.M)
 
-    # remove @tags and [@tags]
-    text = re.sub(r'\[@?[A-Za-z0-9_\.]+\]?', '', text)
+    # ✅ REMOVE ONLY [@TAGS], NOT [720p]
+    text = re.sub(r'\[@[A-Za-z0-9_\.]+\]', '', text)
 
     return re.sub(r'\s{2,}', ' ', text).strip()
 
