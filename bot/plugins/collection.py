@@ -1,25 +1,14 @@
 import re
+import logging
 import asyncio
 from html import escape
+from pyrogram import filters
+from pyrogram.types import Message
+from pyrogram.errors import FloodWait
+from pyrogram.enums import ParseMode
 from collections import defaultdict
 
-from pyrogram import Client, filters
-from pyrogram.types import Message
-from pyrogram.enums import ParseMode
-from pyrogram.errors import FloodWait
-
-from config import CONFIG
-
-# =========================
-# PYROGRAM APP
-# =========================
-
-app = Client(
-    "filter_bot",
-    api_id=CONFIG.API_ID,
-    api_hash=CONFIG.API_HASH,
-    bot_token=CONFIG.BOT_TOKEN
-)
+logger = logging.getLogger(__name__)
 
 # =========================
 # COLLECTION STATE
@@ -33,10 +22,22 @@ collection_state = {
 }
 
 # =========================
-# REGEX
+# REGEX PATTERNS
 # =========================
 
-EP_PATTERN = re.compile(r'(?:E|EP|Episode)\s*[-:]?\s*(\d+)', re.I)
+SEASON_EPISODE_PATTERNS = [
+    re.compile(r'\[S(\d+)\]\s*\[(?:E|EP|Episode)\s*[-–:]*\s*(\d+)\]', re.I),
+    re.compile(r'\[S(\d+)\s*(?:E|EP|Episode)\s*[-–:]*\s*(\d+)\]', re.I),
+    re.compile(r'S(\d+)\s*(?:E|EP|Episode)\s*[-–:]*\s*(\d+)', re.I),
+    re.compile(r'S(\d+)[-_](?:E|EP|Episode)\s*[-–:]*\s*(\d+)', re.I),
+    re.compile(r'Season\s*(\d+)\s*Episode\s*[-–:]*\s*(\d+)', re.I),
+]
+
+EPISODE_ONLY_PATTERN = re.compile(
+    r'(?:E|EP|Episode)\s*[-–:]*\s*(\d+)', re.I
+)
+
+QUALITY_PATTERN = re.compile(r'(4k|2160p|1440p|1080p|720p|480p)', re.I)
 
 # =========================
 # HELPERS
@@ -46,181 +47,192 @@ def remove_tags(text: str) -> str:
     if not text:
         return text
 
-    # ONLY remove telegram tags like @SBANIME or [@SBANIME]
+    promo_patterns = [
+        r'^.*powered\s*by\s*:.*$',
+        r'^.*main\s*channel\s*:.*$',
+        r'^.*join\s*our\s*channel.*$',
+        r'^.*join\s*channel.*$',
+        r'^.*official\s*channel.*$'
+    ]
+
+    for p in promo_patterns:
+        text = re.sub(p, '', text, flags=re.I | re.M)
+
+    text = re.sub(r'^➳.*$', '', text, flags=re.M)
+
+    # ✅ ONLY remove [@TAG] — NOT [720p]
     text = re.sub(r'\[@[A-Za-z0-9_\.]+\]', '', text)
-    text = re.sub(r'@[A-Za-z0-9_\.]+', '', text)
 
     return re.sub(r'\s{2,}', ' ', text).strip()
-
 
 def remove_extension(text: str) -> str:
     return re.sub(r'\.(mkv|mp4|avi|mov|webm)$', '', text, flags=re.I).strip()
 
+def make_caption_safe(text: str):
+    return f"<b>{escape(text)}</b>" if text else None
 
-def make_caption(text: str) -> str:
-    if not text:
-        return ""
-    return f"<b>{escape(text)}</b>"
+# =========================
+# EXTRACT INFO
+# =========================
 
-
-def extract_episode(text: str):
+def extract_info_from_caption(text: str):
     if not text:
         return None
-    m = EP_PATTERN.search(text)
-    return m.group(1).zfill(2) if m else None
+
+    info = {"episode": None, "quality": None}
+
+    for p in SEASON_EPISODE_PATTERNS:
+        m = p.search(text)
+        if m:
+            info["episode"] = m.group(2).zfill(2)
+            break
+
+    if not info["episode"]:
+        m = EPISODE_ONLY_PATTERN.search(text)
+        if m:
+            info["episode"] = m.group(1).zfill(2)
+
+    q = QUALITY_PATTERN.search(text)
+    if q:
+        info["quality"] = q.group(1).lower()
+
+    return info if info["episode"] else None
 
 # =========================
 # COMMANDS
 # =========================
 
-@app.on_message(filters.command("collect") & filters.private)
-async def collect_cmd(_, msg: Message):
-    collection_state["active"] = True
-    collection_state["files"] = []
-    await msg.reply_text("🔄 Collection started.\nSend files now.")
+async def collect_command(client, message: Message):
+    collection_state.update({"active": True, "files": []})
+    await message.reply_text(
+        "🔄 **Collection mode ON**\nSend files now.\nUse /upload when done.",
+        parse_mode=ParseMode.MARKDOWN
+    )
 
-@app.on_message(filters.command("clear") & filters.private)
-async def clear_cmd(_, msg: Message):
-    count = len(collection_state["files"])
-    collection_state["active"] = False
-    collection_state["files"] = []
-    await msg.reply_text(f"🗑️ Cleared {count} files.")
+async def clear_command(client, message: Message):
+    c = len(collection_state["files"])
+    collection_state.update({"active": False, "files": []})
+    await message.reply_text(f"🗑️ Cleared {c} files", parse_mode=ParseMode.MARKDOWN)
 
-@app.on_message(filters.command("status") & filters.private)
-async def status_cmd(_, msg: Message):
-    await msg.reply_text(f"📊 Files collected: {len(collection_state['files'])}")
+async def status_command(client, message: Message):
+    await message.reply_text(
+        f"📊 Files: {len(collection_state['files'])}",
+        parse_mode=ParseMode.MARKDOWN
+    )
 
-@app.on_message(filters.command("tagremove") & filters.private)
-async def tagremove_cmd(_, msg: Message):
+async def tagremove_command(client, message: Message):
     collection_state["tag_remove"] = not collection_state["tag_remove"]
-    await msg.reply_text(
-        f"🏷️ Tag Remove: {'ON ✅' if collection_state['tag_remove'] else 'OFF ❌'}"
+    await message.reply_text(
+        f"🏷️ Tag Remove: {'ON' if collection_state['tag_remove'] else 'OFF'}",
+        parse_mode=ParseMode.MARKDOWN
     )
 
-@app.on_message(filters.command("forward") & filters.private)
-async def forward_cmd(_, msg: Message):
+async def forward_command(client, message: Message):
     collection_state["forward"] = not collection_state["forward"]
-    await msg.reply_text(
-        f"🔁 Forward Mode: {'ON ✅' if collection_state['forward'] else 'OFF ❌'}"
+    await message.reply_text(
+        f"📤 Forward Mode: {'ON' if collection_state['forward'] else 'OFF'}",
+        parse_mode=ParseMode.MARKDOWN
     )
 
 # =========================
-# FILE COLLECT
+# FILE COLLECTION
 # =========================
 
-@app.on_message(
-    filters.private &
-    (filters.video | filters.document | filters.audio | filters.photo)
-)
-async def collect_files(_, msg: Message):
+async def handle_file_collection(client, message: Message):
     if not collection_state["active"]:
         return
 
-    caption = msg.caption or ""
-    episode = extract_episode(caption)
+    caption = message.caption or ""
+    if collection_state["tag_remove"]:
+        caption = remove_tags(caption)
 
-    if not episode:
-        await msg.reply_text("⚠️ Episode detect nahi hua.")
+    info = extract_info_from_caption(caption)
+    if not info:
+        await message.reply_text("⚠️ Episode detect nahi hua.")
         return
 
     collection_state["files"].append({
-        "chat_id": msg.chat.id,
-        "message_id": msg.id,
-        "episode": episode,
-        "type": (
-            "video" if msg.video else
-            "document" if msg.document else
-            "audio" if msg.audio else
+        "chat_id": message.chat.id,
+        "message_id": message.id,
+        "episode": info["episode"],
+        "file_type": (
+            "video" if message.video else
+            "document" if message.document else
+            "audio" if message.audio else
             "photo"
         )
     })
 
-    await msg.reply_text(f"✅ Added E{episode} | Total: {len(collection_state['files'])}")
+    await message.reply_text(
+        f"✅ Added E{info['episode']} | Total {len(collection_state['files'])}",
+        parse_mode=ParseMode.MARKDOWN
+    )
 
 # =========================
 # UPLOAD
 # =========================
 
-@app.on_message(filters.command("upload") & filters.private)
-async def upload_cmd(client, msg: Message):
+async def upload_command(client, message: Message):
     episodes = defaultdict(list)
-
     for f in collection_state["files"]:
         episodes[f["episode"]].append(f)
 
     sticker_id = "CAACAgUAAxkBAAEQA6ppQSnwhAAB6b8IKv2TtiG-jcEgsEQAAv0TAAKjMWBUnDlKQXMRBi82BA"
 
-    for ep in sorted(episodes, key=int):
+    for ep in sorted(episodes, key=lambda x: int(x)):
         await client.send_message(
-            msg.chat.id,
-            f"🎬 <b>Episode {ep}</b>",
-            parse_mode=ParseMode.HTML
+            message.chat.id,
+            f"🎬 **Episode {ep}**",
+            parse_mode=ParseMode.MARKDOWN
         )
 
         for f in episodes[ep]:
             try:
-                original = await client.get_messages(
-                    f["chat_id"],
-                    f["message_id"]
-                )
+                msg = await client.get_messages(f["chat_id"], f["message_id"])
 
+                # ✅ FORWARD MODE
                 if collection_state["forward"]:
                     await client.forward_messages(
-                        chat_id=msg.chat.id,
+                        chat_id=message.chat.id,
                         from_chat_id=f["chat_id"],
                         message_ids=f["message_id"]
                     )
-                else:
-                    caption = original.caption or ""
+                    continue
 
-                    if collection_state["tag_remove"]:
-                        caption = remove_tags(caption)
+                raw = msg.caption or ""
+                if collection_state["tag_remove"]:
+                    raw = remove_tags(raw)
 
-                    caption = remove_extension(caption)
-                    caption = make_caption(caption)
+                raw = make_caption_safe(remove_extension(raw))
 
-                    if f["type"] == "video":
-                        await client.send_video(
-                            msg.chat.id,
-                            original.video.file_id,
-                            caption=caption,
-                            parse_mode=ParseMode.HTML
-                        )
-                    elif f["type"] == "document":
-                        await client.send_document(
-                            msg.chat.id,
-                            original.document.file_id,
-                            caption=caption,
-                            parse_mode=ParseMode.HTML
-                        )
-                    elif f["type"] == "audio":
-                        await client.send_audio(
-                            msg.chat.id,
-                            original.audio.file_id,
-                            caption=caption,
-                            parse_mode=ParseMode.HTML
-                        )
-                    elif f["type"] == "photo":
-                        await client.send_photo(
-                            msg.chat.id,
-                            original.photo.file_id,
-                            caption=caption,
-                            parse_mode=ParseMode.HTML
-                        )
+                if f["file_type"] == "video":
+                    await client.send_video(message.chat.id, msg.video.file_id, caption=raw, parse_mode=ParseMode.HTML)
+                elif f["file_type"] == "document":
+                    await client.send_document(message.chat.id, msg.document.file_id, caption=raw, parse_mode=ParseMode.HTML)
+                elif f["file_type"] == "audio":
+                    await client.send_audio(message.chat.id, msg.audio.file_id, caption=raw, parse_mode=ParseMode.HTML)
+                elif f["file_type"] == "photo":
+                    await client.send_photo(message.chat.id, msg.photo.file_id, caption=raw, parse_mode=ParseMode.HTML)
 
             except FloodWait as fw:
                 await asyncio.sleep(fw.value)
 
-        await client.send_sticker(msg.chat.id, sticker_id)
+        await client.send_sticker(message.chat.id, sticker_id)
 
-    collection_state["active"] = False
-    collection_state["files"] = []
-
-    await msg.reply_text("✅ Upload completed.")
+    collection_state.update({"active": False, "files": []})
+    await message.reply_text("✅ Upload completed", parse_mode=ParseMode.MARKDOWN)
 
 # =========================
-# START
+# REGISTER
 # =========================
 
-print("🤖 Filter Bot Started")
-app.run()
+def register_handlers(app):
+    app.on_message(filters.command("collect") & filters.private)(collect_command)
+    app.on_message(filters.command("upload") & filters.private)(upload_command)
+    app.on_message(filters.command("clear") & filters.private)(clear_command)
+    app.on_message(filters.command("status") & filters.private)(status_command)
+    app.on_message(filters.command("tagremove") & filters.private)(tagremove_command)
+    app.on_message(filters.command("forward") & filters.private)(forward_command)
+    app.on_message(
+        filters.private & (filters.document | filters.video | filters.audio | filters.photo)
+    )(handle_file_collection)
